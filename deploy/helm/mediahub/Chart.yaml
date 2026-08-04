@@ -1,0 +1,6 @@
+apiVersion: v2
+name: mediahub
+description: Production Helm Chart for MediaHub Universal Media Engine
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

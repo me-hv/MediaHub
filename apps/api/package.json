@@ -1,0 +1,40 @@
+{
+  "name": "@mediahub/api",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.8",
+    "@mediahub/billing": "workspace:*",
+    "@mediahub/config": "workspace:*",
+    "@mediahub/downloader": "workspace:*",
+    "@mediahub/events": "workspace:*",
+    "@mediahub/organizations": "workspace:*",
+    "@mediahub/platform": "workspace:*",
+    "@mediahub/queue": "workspace:*",
+    "@mediahub/quota": "workspace:*",
+    "@mediahub/rbac": "workspace:*",
+    "@mediahub/storage": "workspace:*",
+    "@mediahub/cache": "workspace:*",
+    "@mediahub/metrics": "workspace:*",
+    "@mediahub/telemetry": "workspace:*",
+    "@mediahub/types": "workspace:*",
+    "@mediahub/utils": "workspace:*",
+    "@prisma/client": "^6.3.1",
+    "hono": "^4.7.2",
+    "pino": "^9.6.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "prisma": "^6.3.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

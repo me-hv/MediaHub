@@ -1,0 +1,30 @@
+{
+  "name": "@mediahub/worker",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./dist/worker.js",
+  "scripts": {
+    "dev": "tsx watch src/worker.ts",
+    "build": "tsc",
+    "start": "node dist/worker.js",
+    "test": "vitest run",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mediahub/config": "workspace:*",
+    "@mediahub/downloader": "workspace:*",
+    "@mediahub/events": "workspace:*",
+    "@mediahub/platform": "workspace:*",
+    "@mediahub/queue": "workspace:*",
+    "@mediahub/storage": "workspace:*",
+    "@mediahub/telemetry": "workspace:*",
+    "@mediahub/types": "workspace:*",
+    "@mediahub/utils": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.5"
+  }
+}

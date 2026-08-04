@@ -1,0 +1,15 @@
+{
+  "name": "mediahub-monorepo",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --recursive --parallel run dev",
+    "build": "pnpm --recursive run build",
+    "test": "pnpm --recursive run test",
+    "type-check": "pnpm --recursive run type-check",
+    "db:generate": "pnpm --filter @mediahub/api db:generate"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.5"
+  }
+}

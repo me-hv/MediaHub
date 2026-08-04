@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mediahub-api
+  namespace: mediahub
+  labels:
+    app.kubernetes.io/name: mediahub-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mediahub-api
+  template:
+    metadata:
+      labels:
+        app: mediahub-api
+    spec:
+      containers:
+        - name: mediahub-api
+          image: mediahub/api:1.0.0
+          ports:
+            - containerPort: 4000
+          envFrom:
+            - configMapRef:
+                name: mediahub-config
+            - secretRef:
+                name: mediahub-secret
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 4000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 4000
+            initialDelaySeconds: 15
+            periodSeconds: 5

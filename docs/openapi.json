@@ -1,0 +1,67 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "MediaHub Universal Media API",
+    "version": "1.0.0",
+    "description": "Production-grade universal media extraction engine supporting YouTube, Instagram, X, TikTok, Reddit, Vimeo, Subtitles, Audio Conversion & Batch Queueing."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:4000/api/v1",
+      "description": "Local Development Server"
+    },
+    {
+      "url": "https://api.mediahub.io/v1",
+      "description": "Production Cloud Server"
+    }
+  ],
+  "paths": {
+    "/analyze": {
+      "post": {
+        "summary": "Analyze public media URL",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": { "type": "string" }
+                },
+                "required": ["url"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Successfully extracted media metadata" },
+          "400": { "description": "Invalid URL or SSRF protection rejection" }
+        }
+      }
+    },
+    "/download": {
+      "post": {
+        "summary": "Stream media download",
+        "responses": {
+          "200": { "description": "Binary octet-stream payload" }
+        }
+      }
+    },
+    "/batch/analyze": {
+      "post": {
+        "summary": "Validate batch media URLs (Max 50)",
+        "responses": {
+          "200": { "description": "Batch validation results" }
+        }
+      }
+    },
+    "/progress/stream": {
+      "get": {
+        "summary": "Multi-job SSE real-time progress stream",
+        "responses": {
+          "200": { "description": "text/event-stream event channel" }
+        }
+      }
+    }
+  }
+}

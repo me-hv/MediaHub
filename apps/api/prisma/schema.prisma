@@ -1,0 +1,530 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum QueueStatus {
+  QUEUED
+  ANALYZING
+  DOWNLOADING
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum QueueJobType {
+  SINGLE
+  BATCH
+  PLAYLIST
+  AUDIO_EXTRACT
+  SUBTITLE
+}
+
+enum MediaType {
+  VIDEO
+  AUDIO
+  COMBINED
+  SUBTITLE
+  THUMBNAIL
+}
+
+enum PlatformType {
+  YOUTUBE
+  INSTAGRAM
+  X
+  REDDIT
+  TIKTOK
+  FACEBOOK
+  VIMEO
+  THREADS
+  PINTEREST
+  UNKNOWN
+}
+
+enum Theme {
+  LIGHT
+  DARK
+  SYSTEM
+}
+
+enum ApiKeyStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+enum WebhookStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum DeliveryStatus {
+  SUCCESS
+  FAILED
+  PENDING
+}
+
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  DEVELOPER
+  VIEWER
+}
+
+enum PlanTier {
+  FREE
+  PRO
+  BUSINESS
+  ENTERPRISE
+}
+
+enum KeyEnvironment {
+  LIVE
+  TEST
+}
+
+enum ProjectEnvironment {
+  PRODUCTION
+  STAGING
+  DEVELOPMENT
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum ServiceAccountStatus {
+  ACTIVE
+  DISABLED
+  EXPIRED
+}
+
+enum InvoiceStatus {
+  PAID
+  OPEN
+  UNCOLLECTIBLE
+  VOID
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  DECLINED
+}
+
+model User {
+  id          String         @id // Firebase UID
+  email       String         @unique
+  displayName String?
+  photoURL    String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  settings    UserSettings?
+  memberships Membership[]
+  invitations Invitation[]   @relation("InvitedUser")
+  history     DownloadHistory[]
+  favorites   Favorite[]
+  jobs        QueueJob[]
+  playlists   Playlist[]
+  apiKeys     ApiKey[]
+  webhooks    WebhookConfig[]
+  auditLogs   AuditLog[]
+}
+
+model UserSettings {
+  id                     String   @id @default(uuid())
+  userId                 String   @unique
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  defaultFormat          String   @default("mp4")
+  defaultQuality         String   @default("best")
+  filenameTemplate       String   @default("{title}")
+  autoAnalyze            Boolean  @default(true)
+  maxConcurrentDownloads Int      @default(3)
+  theme                  Theme    @default(DARK)
+  updatedAt              DateTime @updatedAt
+}
+
+model Organization {
+  id               String         @id @default(uuid())
+  name             String
+  slug             String         @unique
+  logoUrl          String?
+  website          String?
+  billingEmail     String?
+  country          String?
+  timezone         String?        @default("UTC")
+  stripeCustomerId String?        @unique
+  deletedAt        DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  subscription     Subscription?
+  memberships      Membership[]
+  invitations      Invitation[]
+  projects         Project[]
+  invoices         Invoice[]
+  usageCounters    UsageCounter[]
+  auditLogs        AuditLog[]
+}
+
+model Project {
+  id             String             @id @default(uuid())
+  organizationId String
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  slug           String
+  environment    ProjectEnvironment @default(PRODUCTION)
+  status         ProjectStatus      @default(ACTIVE)
+  deletedAt      DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  apiKeys         ApiKey[]
+  serviceAccounts ServiceAccount[]
+  webhooks        WebhookConfig[]
+  history         DownloadHistory[]
+  jobs            QueueJob[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+}
+
+model Membership {
+  id             String           @id @default(uuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           OrganizationRole @default(DEVELOPER)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+}
+
+model Invitation {
+  id             String           @id @default(uuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  role           OrganizationRole @default(DEVELOPER)
+  tokenPrefix    String           // e.g. "inv_a1b2"
+  tokenHash      String           @unique
+  invitedById    String
+  invitedBy      User             @relation("InvitedUser", fields: [invitedById], references: [id])
+  status         InvitationStatus @default(PENDING)
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  createdAt      DateTime         @default(now())
+
+  @@index([organizationId])
+}
+
+model Subscription {
+  id                   String       @id @default(uuid())
+  organizationId       String       @unique
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan                 PlanTier     @default(FREE)
+  stripeSubscriptionId String?      @unique
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean      @default(false)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+}
+
+model Invoice {
+  id              String        @id @default(uuid())
+  organizationId  String
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stripeInvoiceId String?       @unique
+  amount          Int           // Amount in cents
+  currency        String        @default("usd")
+  status          InvoiceStatus @default(PAID)
+  pdfUrl          String?
+  createdAt       DateTime      @default(now())
+
+  @@index([organizationId])
+}
+
+model ServiceAccount {
+  id               String               @id @default(uuid())
+  projectId        String
+  project          Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name             String
+  description      String?
+  clientId         String               @unique
+  clientSecretHash String
+  createdById      String
+  status           ServiceAccountStatus @default(ACTIVE)
+  lastUsedAt       DateTime?
+  expiresAt        DateTime?
+  deletedAt        DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@index([projectId])
+}
+
+model UsageCounter {
+  id                 String       @id @default(uuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  month              String       // e.g. "2026-08"
+  downloads          Int          @default(0)
+  apiRequests        Int          @default(0)
+  storageBytes       BigInt       @default(0)
+  bandwidthBytes     BigInt       @default(0)
+  queueJobs          Int          @default(0)
+  playlistAnalyses   Int          @default(0)
+  audioExtractions   Int          @default(0)
+  subtitleDownloads  Int          @default(0)
+  cacheHits          Int          @default(0)
+  cacheMisses        Int          @default(0)
+  updatedAt          DateTime     @updatedAt
+
+  @@unique([organizationId, month])
+  @@index([organizationId])
+}
+
+model AuditLog {
+  id             String        @id @default(uuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actorId        String
+  actor          User          @relation(fields: [actorId], references: [id])
+  projectId      String?
+  action         String        // "MEMBER_INVITED", "KEY_CREATED", "BILLING_UPDATED"
+  resourceType   String        // "ApiKey", "Webhook", "Subscription"
+  resourceId     String?
+  ip             String?
+  userAgent      String?
+  metadata       Json?
+  createdAt      DateTime      @default(now())
+
+  @@index([organizationId])
+  @@index([actorId])
+}
+
+model DownloadHistory {
+  id           String       @id @default(uuid())
+  userId       String?
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  projectId    String?
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  urlHash      String
+  rawUrl       String
+  title        String
+  thumbnail    String?
+  platform     PlatformType @default(UNKNOWN)
+  formatId     String
+  mediaType    MediaType    @default(COMBINED)
+  bytesSent    BigInt?
+  duration     Int?
+  status       String       // 'COMPLETED' | 'FAILED' | 'CANCELLED'
+  ipAddress    String?
+  downloadedAt DateTime     @default(now())
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([urlHash])
+  @@index([downloadedAt])
+}
+
+model Favorite {
+  id              String       @id @default(uuid())
+  userId          String
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rawUrl          String
+  providerVideoId String?
+  urlHash         String
+  title           String
+  thumbnail       String?
+  platform        PlatformType @default(UNKNOWN)
+  duration        Int?
+  createdAt       DateTime     @default(now())
+
+  @@unique([userId, rawUrl])
+  @@index([userId])
+}
+
+model Playlist {
+  id            String         @id @default(uuid())
+  userId        String?
+  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  rawUrl        String
+  title         String
+  videoCount    Int
+  estimatedSize BigInt?
+  createdAt     DateTime       @default(now())
+
+  items         PlaylistItem[]
+
+  @@index([userId])
+}
+
+model PlaylistItem {
+  id         String   @id @default(uuid())
+  playlistId String
+  playlist   Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  title      String
+  rawUrl     String
+  thumbnail  String?
+  duration   Int?
+  position   Int
+}
+
+model QueueJob {
+  id              String       @id @default(uuid())
+  userId          String?
+  user            User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  projectId       String?
+  project         Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  jobType         QueueJobType @default(SINGLE)
+  rawUrl          String
+  formatId        String
+  status          QueueStatus  @default(QUEUED)
+  priority        Int          @default(0)
+  progress        Float        @default(0)
+  bytesDownloaded BigInt       @default(0)
+  totalBytes      BigInt       @default(0)
+  downloadSpeed   String?
+  eta             String?
+  attempts        Int          @default(0)
+  maxAttempts     Int          @default(3)
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  error           String?
+  metadata        Json?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([status])
+  @@index([priority])
+}
+
+model MediaCache {
+  id        String   @id @default(uuid())
+  urlHash   String   @unique
+  rawUrl    String
+  platform  String
+  title     String
+  uploader  String?
+  duration  Int?
+  thumbnail String?
+  metadata  Json
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([urlHash])
+  @@index([expiresAt])
+}
+
+model ApiKey {
+  id                String         @id @default(uuid())
+  userId            String?
+  user              User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId         String?
+  project           Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name              String
+  keyPrefix         String         // e.g. "mh_live_a1b2"
+  keyHash           String         @unique // SHA-256 hash of secret key
+  scopes            String[]       @default(["media.read", "media.download"])
+  env               KeyEnvironment @default(LIVE)
+  status            ApiKeyStatus   @default(ACTIVE)
+  requestsPerMinute Int?
+  lastUsedAt        DateTime?
+  expiresAt         DateTime?
+  deletedAt         DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  requestLogs ApiRequestLog[]
+  dailyUsage  ApiUsageDaily[]
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([keyHash])
+}
+
+model WebhookConfig {
+  id           String         @id @default(uuid())
+  userId       String?
+  user         User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId    String?
+  project      Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  url          String
+  secretPrefix String         // e.g. "whsec_a1b2"
+  secretHash   String         // SHA-256 hash of webhook signing secret
+  events       String[]       // ["download.completed", "download.failed", ...]
+  status       WebhookStatus  @default(ACTIVE)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  deliveries   WebhookDelivery[]
+
+  @@index([userId])
+  @@index([projectId])
+}
+
+model WebhookDelivery {
+  id           String         @id @default(uuid())
+  webhookId    String
+  webhook      WebhookConfig  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  event        String
+  payload      Json
+  responseCode Int?
+  responseBody String?
+  durationMs   Int?
+  status       DeliveryStatus @default(PENDING)
+  attempts     Int            @default(1)
+  createdAt    DateTime       @default(now())
+
+  @@index([webhookId])
+  @@index([status])
+}
+
+model ApiRequestLog {
+  id             String    @id @default(uuid())
+  requestId      String    // Correlated request ID
+  apiKeyId       String?
+  apiKey         ApiKey?   @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+  organizationId String?
+  projectId      String?
+  endpoint       String
+  method         String
+  statusCode     Int
+  durationMs     Int
+  bytesSent      BigInt    @default(0)
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime  @default(now())
+
+  @@index([apiKeyId])
+  @@index([organizationId])
+  @@index([createdAt])
+}
+
+model ApiUsageDaily {
+  id            String   @id @default(uuid())
+  apiKeyId      String
+  apiKey        ApiKey   @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  date          DateTime // Date trunk (00:00:00)
+  totalRequests Int      @default(0)
+  totalBytes    BigInt   @default(0)
+  errorCount    Int      @default(0)
+  avgDurationMs Float    @default(0)
+
+  @@unique([apiKeyId, date])
+  @@index([apiKeyId])
+}
