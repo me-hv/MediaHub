@@ -1,44 +1,89 @@
-# MediaHub Deployment & Operations Guide
+# MediaHub Production Worker Deployment Guide
 
-## Overview
-MediaHub Phase 3 is designed for cloud-native deployment using Docker Compose, Kubernetes, or Helm.
+This guide details the multi-replica, distributed deployment of the **MediaHub Worker Daemon (`apps/worker`)**.
 
 ---
 
-## 1. Local Docker Compose Setup
-```bash
-# Start Postgres, Redis, API, Web, and NGINX Reverse Proxy
-docker-compose -f docker-compose.prod.yml up -d --build
+## 🏗️ Independent Worker Deployment Topologies
 
-# Inspect logs
-docker-compose -f docker-compose.prod.yml logs -f api
+In high-throughput enterprise environments, worker processes should be deployed independently with targeted replica counts and dedicated resource limits.
+
+```
+                    ┌─────────────────────────┐
+                    │    Redis / BullMQ       │
+                    └────────────┬────────────┘
+                                 │
+     ┌───────────────────┬───────┴───────────┬───────────────────┐
+     │                   │                   │                   │
+┌────▼─────────────┐ ┌───▼─────────────┐ ┌───▼─────────────┐ ┌───▼─────────────┐
+│ Download Workers │ │ Webhook Workers │ │Analytics Workers│ │ Maintenance     │
+│   (10 Replicas)  │ │   (2 Replicas)  │ │   (1 Replica)   │ │   (1 Replica)   │
+└──────────────────┘ └─────────────────┘ └─────────────────┘ └─────────────────┘
 ```
 
 ---
 
-## 2. Kubernetes Deployment
-```bash
-# Apply raw Kubernetes manifests
-kubectl apply -f k8s/
+## 📦 Kubernetes Deployment Manifests (`helm/values.yaml`)
 
-# Verify status
-kubectl get pods -n mediahub
-kubectl get svc -n mediahub
+```yaml
+workers:
+  download:
+    replicaCount: 10
+    resources:
+      limits:
+        cpu: "2000m"
+        memory: "4Gi"
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+    env:
+      WORKER_MODULE: "downloads"
+      QUEUE_CONCURRENCY: 20
+
+  webhook:
+    replicaCount: 2
+    resources:
+      limits:
+        cpu: "500m"
+        memory: "1Gi"
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+    env:
+      WORKER_MODULE: "webhooks"
+      QUEUE_CONCURRENCY: 50
+
+  analytics:
+    replicaCount: 1
+    resources:
+      limits:
+        cpu: "1000m"
+        memory: "2Gi"
+    env:
+      WORKER_MODULE: "analytics"
+
+  maintenance:
+    replicaCount: 1
+    resources:
+      limits:
+        cpu: "500m"
+        memory: "1Gi"
+    env:
+      WORKER_MODULE: "maintenance"
 ```
 
 ---
 
-## 3. Helm Deployment
+## 📊 Worker Telemetry & Monitoring
+
+Inspect live worker health and queue velocity at any time:
+
 ```bash
-# Deploy using Helm
-helm upgrade --install mediahub deploy/helm/mediahub -f deploy/helm/mediahub/values-production.yaml
+curl http://localhost:4000/health/workers
 ```
 
----
-
-## 4. Health & Observability Probes
-- **Liveness**: `GET http://localhost:4000/live`
-- **Readiness**: `GET http://localhost:4000/ready`
-- **Full Health**: `GET http://localhost:4000/health`
-- **Prometheus Metrics**: `GET http://localhost:4000/metrics`
-- **Bull Board Queue Dashboard**: `GET http://localhost:4000/admin/queues`
+### Metrics Output:
+- `activeWorkerReplicas`: Count of connected worker containers.
+- `queueLag`: Number of pending jobs across all queues.
+- `jobsPerSecond`: Real-time processing velocity.
+- `redlockStatus`: Distributed lock state.

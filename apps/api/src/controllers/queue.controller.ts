@@ -84,27 +84,27 @@ export class QueueController {
           controller.enqueue(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
         };
 
-        const onProgress = (payload: any) => {
-          if (!user || !payload.userId || payload.userId === user.id) {
-            sendEvent('progress', payload);
+        const onProgress = (envelope: any) => {
+          if (!user || !envelope.payload.userId || envelope.payload.userId === user.id) {
+            sendEvent('progress', envelope.payload);
           }
         };
 
-        const onCompleted = (payload: any) => {
-          if (!user || !payload.userId || payload.userId === user.id) {
-            sendEvent('completed', payload);
+        const onCompleted = (envelope: any) => {
+          if (!user || !envelope.payload.userId || envelope.payload.userId === user.id) {
+            sendEvent('completed', envelope.payload);
           }
         };
 
-        const onFailed = (payload: any) => {
-          if (!user || !payload.userId || payload.userId === user.id) {
-            sendEvent('failed', payload);
+        const onFailed = (envelope: any) => {
+          if (!user || !envelope.payload.userId || envelope.payload.userId === user.id) {
+            sendEvent('failed', envelope.payload);
           }
         };
 
-        mediaHubEvents.on('ProgressUpdated', onProgress);
-        mediaHubEvents.on('DownloadCompleted', onCompleted);
-        mediaHubEvents.on('DownloadFailed', onFailed);
+        mediaHubEvents.on('download:progress', onProgress);
+        mediaHubEvents.on('download:completed', onCompleted);
+        mediaHubEvents.on('download:failed', onFailed);
 
         // Send initial active jobs snapshot
         const activeJobs = globalQueueManager.getAllJobs(user?.id);
@@ -117,9 +117,9 @@ export class QueueController {
 
         c.req.raw.signal.addEventListener('abort', () => {
           clearInterval(heartbeat);
-          mediaHubEvents.off('ProgressUpdated', onProgress);
-          mediaHubEvents.off('DownloadCompleted', onCompleted);
-          mediaHubEvents.off('DownloadFailed', onFailed);
+          mediaHubEvents.off('download:progress', onProgress);
+          mediaHubEvents.off('download:completed', onCompleted);
+          mediaHubEvents.off('download:failed', onFailed);
         });
       },
     });

@@ -73,7 +73,7 @@ export class QueueManager {
     this.pendingQueue.push({ id: jobId, priority, task: options.task });
     this.pendingQueue.sort((a, b) => b.priority - a.priority);
 
-    mediaHubEvents.emit('ProgressUpdated', { jobId, status: 'QUEUED', progress: 0, userId: options.userId });
+    mediaHubEvents.emit('download:queued', { jobId, rawUrl: options.rawUrl, formatId: state.formatId });
 
     this.processNext();
     return { jobId, status: 'QUEUED' };
@@ -95,14 +95,14 @@ export class QueueManager {
     state.startedAt = new Date();
     state.attempts++;
 
-    mediaHubEvents.emit('ProgressUpdated', { jobId: state.id, status: 'DOWNLOADING', progress: 5, userId: state.userId });
+    mediaHubEvents.emit('download:started', { jobId: state.id, startTime: new Date().toISOString() });
 
     try {
       await nextItem.task();
       state.status = 'COMPLETED';
       state.progress = 100;
       state.finishedAt = new Date();
-      mediaHubEvents.emit('DownloadCompleted', { jobId: state.id, rawUrl: state.rawUrl, userId: state.userId });
+      mediaHubEvents.emit('download:completed', { jobId: state.id, url: state.rawUrl, bytesSent: state.bytesDownloaded || 0 });
     } catch (err: any) {
       state.error = err.message;
       if (state.attempts < state.maxAttempts) {
@@ -112,7 +112,7 @@ export class QueueManager {
         state.status = 'FAILED';
         state.finishedAt = new Date();
         this.deadLetterQueue.push(state);
-        mediaHubEvents.emit('DownloadFailed', { jobId: state.id, error: err.message, userId: state.userId });
+        mediaHubEvents.emit('download:failed', { jobId: state.id, error: err.message });
       }
     } finally {
       this.activeWorkerCount--;
@@ -126,7 +126,7 @@ export class QueueManager {
       state.status = 'CANCELLED';
       state.finishedAt = new Date();
       this.pendingQueue = this.pendingQueue.filter((item) => item.id !== jobId);
-      mediaHubEvents.emit('DownloadCancelled', { jobId, userId: state.userId });
+      mediaHubEvents.emit('download:failed', { jobId, error: 'CANCELLED_BY_USER' });
       return true;
     }
     return false;
