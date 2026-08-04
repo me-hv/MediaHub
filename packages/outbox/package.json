@@ -1,0 +1,20 @@
+{
+  "name": "@mediahub/outbox",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mediahub/events": "workspace:*",
+    "@mediahub/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.5"
+  }
+}

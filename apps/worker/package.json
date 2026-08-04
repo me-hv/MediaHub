@@ -14,12 +14,16 @@
     "@mediahub/config": "workspace:*",
     "@mediahub/downloader": "workspace:*",
     "@mediahub/events": "workspace:*",
+    "@mediahub/flags": "workspace:*",
+    "@mediahub/outbox": "workspace:*",
     "@mediahub/platform": "workspace:*",
     "@mediahub/queue": "workspace:*",
+    "@mediahub/scheduler": "workspace:*",
     "@mediahub/storage": "workspace:*",
     "@mediahub/telemetry": "workspace:*",
     "@mediahub/types": "workspace:*",
-    "@mediahub/utils": "workspace:*"
+    "@mediahub/utils": "workspace:*",
+    "@mediahub/workflows": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.13.0",

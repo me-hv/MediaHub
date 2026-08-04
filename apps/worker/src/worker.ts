@@ -1,20 +1,18 @@
-import { mediaHubEvents } from '@mediahub/events';
+import { DownloadWorker } from './workers/download.worker';
+import { WebhookWorker } from './workers/webhook.worker';
+import { AnalyticsWorker } from './workers/analytics.worker';
+import { CleanupWorker } from './workers/cleanup.worker';
 import { globalShutdownManager } from '@mediahub/platform';
 
 export class BackgroundWorkerDaemon {
   static start() {
     console.log('[MediaHub Worker Daemon] Initializing background processors...');
 
-    // Subscribe to internal event bus
-    mediaHubEvents.on('download:completed', (payload) => {
-      console.log(`[Worker EventBus] Download completed event received for job ${payload.jobId}`);
-    });
+    DownloadWorker.start();
+    WebhookWorker.start();
+    AnalyticsWorker.start();
+    CleanupWorker.start();
 
-    mediaHubEvents.on('download:failed', (payload) => {
-      console.error(`[Worker EventBus] Download failed event received for job ${payload.jobId}: ${payload.error}`);
-    });
-
-    // Register shutdown handler
     globalShutdownManager.register('BackgroundWorkerDaemon', async () => {
       console.log('[Worker Daemon] Gracefully shutting down worker listeners...');
     });

@@ -35,12 +35,18 @@ importers:
       '@mediahub/events':
         specifier: workspace:*
         version: link:../../packages/events
+      '@mediahub/flags':
+        specifier: workspace:*
+        version: link:../../packages/flags
       '@mediahub/metrics':
         specifier: workspace:*
         version: link:../../packages/metrics
       '@mediahub/organizations':
         specifier: workspace:*
         version: link:../../packages/organizations
+      '@mediahub/outbox':
+        specifier: workspace:*
+        version: link:../../packages/outbox
       '@mediahub/platform':
         specifier: workspace:*
         version: link:../../packages/platform
@@ -65,6 +71,9 @@ importers:
       '@mediahub/utils':
         specifier: workspace:*
         version: link:../../packages/utils
+      '@mediahub/workflows':
+        specifier: workspace:*
+        version: link:../../packages/workflows
       '@prisma/client':
         specifier: ^6.3.1
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
@@ -90,6 +99,9 @@ importers:
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(tsx@4.23.5)
 
   apps/web:
     dependencies:
@@ -157,12 +169,21 @@ importers:
       '@mediahub/events':
         specifier: workspace:*
         version: link:../../packages/events
+      '@mediahub/flags':
+        specifier: workspace:*
+        version: link:../../packages/flags
+      '@mediahub/outbox':
+        specifier: workspace:*
+        version: link:../../packages/outbox
       '@mediahub/platform':
         specifier: workspace:*
         version: link:../../packages/platform
       '@mediahub/queue':
         specifier: workspace:*
         version: link:../../packages/queue
+      '@mediahub/scheduler':
+        specifier: workspace:*
+        version: link:../../packages/scheduler
       '@mediahub/storage':
         specifier: workspace:*
         version: link:../../packages/storage
@@ -175,6 +196,9 @@ importers:
       '@mediahub/utils':
         specifier: workspace:*
         version: link:../../packages/utils
+      '@mediahub/workflows':
+        specifier: workspace:*
+        version: link:../../packages/workflows
     devDependencies:
       '@types/node':
         specifier: ^22.13.0
@@ -182,6 +206,22 @@ importers:
       tsx:
         specifier: ^4.19.2
         version: 4.23.5
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(tsx@4.23.5)
+
+  packages/analytics:
+    dependencies:
+      '@mediahub/types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
+      '@types/node':
+        specifier: ^22.13.0
+        version: 22.20.1
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -201,12 +241,15 @@ importers:
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(tsx@4.23.5)
 
   packages/cache:
     dependencies:
-      '@mediahub/types':
+      '@mediahub/config':
         specifier: workspace:*
-        version: link:../types
+        version: link:../config
     devDependencies:
       '@types/node':
         specifier: ^22.13.0
@@ -214,6 +257,9 @@ importers:
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(tsx@4.23.5)
 
   packages/cli:
     dependencies:
@@ -230,6 +276,9 @@ importers:
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(tsx@4.23.5)
 
   packages/config:
     dependencies:
@@ -273,6 +322,18 @@ importers:
         version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(tsx@4.23.5)
 
   packages/events:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.13.0
+        version: 22.20.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(tsx@4.23.5)
+
+  packages/flags:
     dependencies:
       '@mediahub/types':
         specifier: workspace:*
@@ -284,6 +345,9 @@ importers:
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(tsx@4.23.5)
 
   packages/metrics:
     dependencies:
@@ -299,6 +363,22 @@ importers:
         version: 5.9.3
 
   packages/notifications:
+    dependencies:
+      '@mediahub/types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
+      '@types/node':
+        specifier: ^22.13.0
+        version: 22.20.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(tsx@4.23.5)
+
+  packages/orchestration:
     dependencies:
       '@mediahub/types':
         specifier: workspace:*
@@ -330,6 +410,25 @@ importers:
         specifier: ^3.0.5
         version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(tsx@4.23.5)
 
+  packages/outbox:
+    dependencies:
+      '@mediahub/events':
+        specifier: workspace:*
+        version: link:../events
+      '@mediahub/types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
+      '@types/node':
+        specifier: ^22.13.0
+        version: 22.20.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(tsx@4.23.5)
+
   packages/platform:
     dependencies:
       '@mediahub/types':
@@ -342,6 +441,9 @@ importers:
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(tsx@4.23.5)
 
   packages/queue:
     dependencies:
@@ -397,6 +499,22 @@ importers:
         specifier: ^3.0.5
         version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(tsx@4.23.5)
 
+  packages/scheduler:
+    dependencies:
+      '@mediahub/types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
+      '@types/node':
+        specifier: ^22.13.0
+        version: 22.20.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(tsx@4.23.5)
+
   packages/sdk-ts:
     dependencies:
       '@mediahub/types':
@@ -409,8 +527,15 @@ importers:
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(tsx@4.23.5)
 
-  packages/storage:
+  packages/search:
+    dependencies:
+      '@mediahub/types':
+        specifier: workspace:*
+        version: link:../types
     devDependencies:
       '@types/node':
         specifier: ^22.13.0
@@ -418,6 +543,28 @@ importers:
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(tsx@4.23.5)
+
+  packages/storage:
+    dependencies:
+      '@mediahub/config':
+        specifier: workspace:*
+        version: link:../config
+      '@mediahub/types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
+      '@types/node':
+        specifier: ^22.13.0
+        version: 22.20.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(tsx@4.23.5)
 
   packages/telemetry:
     devDependencies:
@@ -451,6 +598,22 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^3.0.4
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(tsx@4.23.5)
+
+  packages/workflows:
+    dependencies:
+      '@mediahub/types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
+      '@types/node':
+        specifier: ^22.13.0
+        version: 22.20.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
         version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(tsx@4.23.5)
 
 packages:

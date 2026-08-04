@@ -7,6 +7,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
+    "test": "vitest run",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -15,12 +16,15 @@
     "@mediahub/config": "workspace:*",
     "@mediahub/downloader": "workspace:*",
     "@mediahub/events": "workspace:*",
+    "@mediahub/flags": "workspace:*",
     "@mediahub/organizations": "workspace:*",
+    "@mediahub/outbox": "workspace:*",
     "@mediahub/platform": "workspace:*",
     "@mediahub/queue": "workspace:*",
     "@mediahub/quota": "workspace:*",
     "@mediahub/rbac": "workspace:*",
     "@mediahub/storage": "workspace:*",
+    "@mediahub/workflows": "workspace:*",
     "@mediahub/cache": "workspace:*",
     "@mediahub/metrics": "workspace:*",
     "@mediahub/telemetry": "workspace:*",
@@ -35,6 +39,7 @@
     "@types/node": "^22.13.0",
     "prisma": "^6.3.1",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.5"
   }
 }
