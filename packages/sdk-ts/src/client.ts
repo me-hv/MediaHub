@@ -45,6 +45,40 @@ export class MediaHubClient {
     return this.request<ApiIntrospectionData>('/public/me');
   }
 
+  // Namespaced Audio Operations
+  audio = {
+    analyze: async (url: string): Promise<any> => {
+      return this.request('/audio/analyze', {
+        method: 'POST',
+        body: JSON.stringify({ url }),
+      });
+    },
+    download: async (url: string, format = 'mp3', bitrate = '320'): Promise<Blob> => {
+      const res = await fetch(`${this.baseUrl}/audio/download`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({ url, format, bitrate }),
+      });
+      if (!res.ok) throw new Error('Audio download failed');
+      return await res.blob();
+    },
+    album: async (url: string): Promise<any> => {
+      return this.request('/audio/album', {
+        method: 'POST',
+        body: JSON.stringify({ url }),
+      });
+    },
+    playlist: async (url: string): Promise<any> => {
+      return this.request('/audio/album', {
+        method: 'POST',
+        body: JSON.stringify({ url }),
+      });
+    },
+  };
+
   // Namespaced Organizations & Projects
   orgs = {
     list: async (): Promise<OrganizationData[]> => {

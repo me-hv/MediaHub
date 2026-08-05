@@ -1,4 +1,5 @@
 import { DownloadWorker } from './workers/download.worker';
+import { AudioWorker } from './workers/audio.worker';
 import { WebhookWorker } from './workers/webhook.worker';
 import { AnalyticsWorker } from './workers/analytics.worker';
 import { CleanupWorker } from './workers/cleanup.worker';
@@ -14,6 +15,7 @@ export class BackgroundWorkerDaemon {
     });
 
     DownloadWorker.start();
+    AudioWorker.start();
     WebhookWorker.start();
     AnalyticsWorker.start();
     CleanupWorker.start();

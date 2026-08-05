@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.13.8",
+    "@mediahub/audio": "workspace:*",
     "@mediahub/billing": "workspace:*",
     "@mediahub/config": "workspace:*",
     "@mediahub/downloader": "workspace:*",

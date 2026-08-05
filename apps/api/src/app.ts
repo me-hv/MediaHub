@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from './utils/logger';
 import { mediaRoutes } from './routes/media.routes';
+import { audioRoutes } from './routes/audio.routes';
 import { authRoutes } from './routes/auth.routes';
 import { userRoutes } from './routes/user.routes';
 import { historyRoutes } from './routes/history.routes';
@@ -101,7 +102,7 @@ app.get('/health/workers', (c) => {
     jobsPerSecond: 142.5,
     memoryUsage: process.memoryUsage(),
     redlockStatus: 'HEALTHY',
-    queues: ['downloads', 'webhooks', 'analytics', 'notifications', 'maintenance'],
+    queues: ['downloads', 'audio-downloads', 'webhooks', 'analytics', 'notifications', 'maintenance'],
     timestamp: new Date().toISOString(),
     requestId,
   });
@@ -135,6 +136,7 @@ app.get('/admin/queues', (c) => {
 
 // 6. Versioned API Routes (/api/v1/)
 app.route('/api/v1', mediaRoutes);
+app.route('/api/v1', audioRoutes);
 app.route('/api/v1', authRoutes);
 app.route('/api/v1', userRoutes);
 app.route('/api/v1', historyRoutes);
@@ -146,6 +148,7 @@ app.route('/api/v1', orgRoutes);
 
 // Legacy fallback (/api/)
 app.route('/api', mediaRoutes);
+app.route('/api', audioRoutes);
 app.route('/api', authRoutes);
 app.route('/api', userRoutes);
 app.route('/api', historyRoutes);

@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MediaMetadata, QualityCategory, QualityOption } from '@mediahub/types';
 import { formatDuration, formatBytes } from '@mediahub/utils';
 import { PlatformBadge } from './PlatformBadge';
+import { AudioPreviewPlayer } from './AudioPreviewPlayer';
 import { useDownloadMedia } from '../../hooks/useDownloadMedia';
 import { Download, Clock, User, Film, Music, CheckCircle2, Loader2, XCircle, AlertCircle, Eye, Calendar, Info, Cpu, Heart, Sparkles, Monitor } from 'lucide-react';
 
@@ -12,9 +13,17 @@ interface MetadataCardProps {
 }
 
 export function MetadataCard({ metadata }: MetadataCardProps) {
-  const [activeTab, setActiveTab] = useState<QualityCategory>('combined');
+  const isMusicSource = metadata.url.includes('music.youtube.com') || metadata.qualities.combined.length === 0;
+
+  const [activeTab, setActiveTab] = useState<QualityCategory>(isMusicSource ? 'audio' : 'combined');
   const [selectedFormatId, setSelectedFormatId] = useState<string>('');
   const [showInspector, setShowInspector] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (isMusicSource) {
+      setActiveTab('audio');
+    }
+  }, [metadata.url, isMusicSource]);
 
   const { startDownload, cancelDownload, isDownloading, error: downloadError } = useDownloadMedia();
 
@@ -124,6 +133,9 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
           </div>
         </div>
       </div>
+
+      {/* Audio Stream Preview Component */}
+      <AudioPreviewPlayer title={metadata.title} artist={metadata.uploader || metadata.channel} />
 
       {/* Media Inspector Drawer */}
       {showInspector && (
