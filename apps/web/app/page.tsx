@@ -1,27 +1,29 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useAnalyzeMedia } from '../hooks/useAnalyzeMedia';
+import { useAnalyzeMedia, AnalyzeRequestOptions } from '../hooks/useAnalyzeMedia';
 import { UrlInputForm } from '../components/media/UrlInputForm';
 import { SkeletonCard } from '../components/media/SkeletonCard';
 import { MetadataCard } from '../components/media/MetadataCard';
 import { ErrorMessage } from '../components/media/ErrorMessage';
 import { FeaturesGrid } from '../components/media/FeaturesGrid';
+import { AlertCircle } from 'lucide-react';
 
 export default function HomePage() {
-  const analyzeMutation = useAnalyzeMedia();
+  const { analyze, isPending, isSuccess, isError, metadata, error, warningNotice } = useAnalyzeMedia();
   const [currentUrl, setCurrentUrl] = useState<string>('');
 
-  const handleAnalyze = (url: string) => {
-    setCurrentUrl(url);
-    analyzeMutation.mutate({ url });
+  const handleAnalyze = (options: { url: string; source: AnalyzeRequestOptions['source'] }) => {
+    setCurrentUrl(options.url);
+    analyze(options);
   };
 
   const isRateLimit =
-    analyzeMutation.isError &&
-    (analyzeMutation.error.message.includes('Instagram') ||
-      analyzeMutation.error.message.includes('rate limit') ||
-      analyzeMutation.error.message.includes('limiting'));
+    error &&
+    (error.message.includes('Instagram') ||
+      error.message.includes('rate limit') ||
+      error.message.includes('limiting') ||
+      error.message.includes('YouTube'));
 
   return (
     <div className="relative z-10 px-4 py-12 sm:py-20 max-w-6xl mx-auto space-y-12">
@@ -37,27 +39,35 @@ export default function HomePage() {
         </h1>
 
         <p className="text-sm sm:text-base text-text-muted leading-relaxed max-w-xl mx-auto">
-          Download videos, audio, and media streams instantly from YouTube, Instagram, X, Reddit, TikTok, Facebook, and more.
+          Download videos, audio, and media streams instantly from YouTube, YouTube Music, Instagram, X, Reddit, TikTok, Facebook, and more.
         </p>
       </div>
 
       {/* Input Form */}
-      <UrlInputForm onAnalyze={handleAnalyze} isLoading={analyzeMutation.isPending} />
+      <UrlInputForm onAnalyze={handleAnalyze} isLoading={isPending} />
+
+      {/* Warning Notice Banner (preserves active metadata while alerting user of rate-limit warnings) */}
+      {warningNotice && metadata && (
+        <div className="max-w-3xl mx-auto text-xs text-amber-300 bg-amber-500/10 p-3.5 rounded-xl border border-amber-500/20 flex items-center gap-2.5 shadow-lg backdrop-blur-md">
+          <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>{warningNotice}</span>
+        </div>
+      )}
 
       {/* Dynamic Results Area */}
       <div className="space-y-6">
-        {analyzeMutation.isPending && <SkeletonCard />}
+        {isPending && !metadata && <SkeletonCard />}
 
-        {analyzeMutation.isError && (
+        {isError && !metadata && (
           <ErrorMessage
-            message={analyzeMutation.error.message || 'Failed to analyze media link.'}
-            onRetry={currentUrl ? () => handleAnalyze(currentUrl) : undefined}
-            isRateLimit={isRateLimit}
+            message={error?.message || 'Failed to analyze media link.'}
+            onRetry={currentUrl ? () => handleAnalyze({ url: currentUrl, source: 'Retry' }) : undefined}
+            isRateLimit={!!isRateLimit}
           />
         )}
 
-        {analyzeMutation.isSuccess && analyzeMutation.data && (
-          <MetadataCard metadata={analyzeMutation.data} />
+        {metadata && (
+          <MetadataCard metadata={metadata} />
         )}
       </div>
 
