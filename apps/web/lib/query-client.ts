@@ -1,6 +1,6 @@
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, isServer } from '@tanstack/react-query';
 
-export function createQueryClient() {
+function makeQueryClient() {
   return new QueryClient({
     defaultOptions: {
       queries: {
@@ -10,4 +10,15 @@ export function createQueryClient() {
       },
     },
   });
+}
+
+let browserQueryClient: QueryClient | undefined = undefined;
+
+export function getQueryClient() {
+  if (isServer) {
+    return makeQueryClient();
+  } else {
+    if (!browserQueryClient) browserQueryClient = makeQueryClient();
+    return browserQueryClient;
+  }
 }

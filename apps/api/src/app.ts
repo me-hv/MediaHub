@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import { logger } from './utils/logger';
 import { mediaRoutes } from './routes/media.routes';
 import { authRoutes } from './routes/auth.routes';
@@ -25,14 +26,21 @@ export interface AppEnv {
 
 export const app = new Hono<AppEnv>();
 
-// 1. Security Headers Middleware
+// 1. CORS Middleware
+app.use('*', cors({
+  origin: '*',
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization', 'x-request-id', 'x-api-key'],
+}));
+
+// 2. Security Headers Middleware
 app.use('*', async (c, next) => {
   const headers = getSecurityHeaders();
   Object.entries(headers).forEach(([k, v]) => c.header(k, v));
   await next();
 });
 
-// 2. Request Tracing & Logging Middleware
+// 3. Request Tracing & Logging Middleware
 app.use('*', async (c, next) => {
   const requestId = c.req.header('x-request-id') || `req-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   c.set('requestId', requestId);
@@ -47,7 +55,7 @@ app.use('*', async (c, next) => {
   logger.info({ requestId, status: c.res.status, durationMs: duration }, 'HTTP Request Completed');
 });
 
-// 3. Health & Observability Probes
+// 4. Health & Observability Probes
 app.get('/live', (c) => {
   return c.json(PlatformProbes.getLiveness());
 });
@@ -105,7 +113,7 @@ app.get('/metrics', async (c) => {
   return c.text(metricsText);
 });
 
-// 4. Bull Board Admin Dashboard
+// 5. Bull Board Admin Dashboard
 app.get('/admin/queues', (c) => {
   const requestId = c.get('requestId') || 'req-unknown';
   const stats = globalQueueManager.getStats();
@@ -125,7 +133,7 @@ app.get('/admin/queues', (c) => {
   });
 });
 
-// 5. Versioned API Routes (/api/v1/)
+// 6. Versioned API Routes (/api/v1/)
 app.route('/api/v1', mediaRoutes);
 app.route('/api/v1', authRoutes);
 app.route('/api/v1', userRoutes);

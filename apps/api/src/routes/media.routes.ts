@@ -10,6 +10,10 @@ const analyzeRateLimiter = createRateLimiter(20, 60000);
 const downloadRateLimiter = createRateLimiter(10, 60000);
 
 mediaRoutes.post('/analyze', analyzeRateLimiter, authMiddleware(false), MediaController.analyzeMedia);
+mediaRoutes.post('/media/analyze', analyzeRateLimiter, authMiddleware(false), MediaController.analyzeMedia);
+
 mediaRoutes.post('/download', downloadRateLimiter, authMiddleware(false), MediaController.downloadMedia);
+mediaRoutes.post('/media/download', downloadRateLimiter, authMiddleware(false), MediaController.downloadMedia);
+
 mediaRoutes.post('/media/subtitles', authMiddleware(false), MediaController.getSubtitles);
 mediaRoutes.post('/media/audio', authMiddleware(false), MediaController.extractAudio);
