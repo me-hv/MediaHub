@@ -18,8 +18,12 @@ export interface QualityOption {
   formatId: string;
   ext: string;
   resolution?: string;
+  width?: number;
+  height?: number;
+  aspectRatio?: string;
   filesize?: number;
   filesizeApprox?: number;
+  filesizeEstimated?: number;
   qualityLabel?: string;
   hasVideo: boolean;
   hasAudio: boolean;
@@ -27,6 +31,8 @@ export interface QualityOption {
   fps?: number;
   vcodec?: string;
   acodec?: string;
+  tbr?: number;
+  hdr?: boolean;
 }
 
 export interface CategorizedQualities {
@@ -40,11 +46,16 @@ export interface MediaMetadata {
   urlHash: string;
   title: string;
   uploader?: string;
+  channel?: string;
   duration?: number;
   thumbnail?: string;
   viewCount?: number;
+  likeCount?: number;
   uploadDate?: string;
   description?: string;
+  width?: number;
+  height?: number;
+  aspectRatio?: string;
   platform: PlatformType;
   qualities: CategorizedQualities;
   cachedAt?: string;

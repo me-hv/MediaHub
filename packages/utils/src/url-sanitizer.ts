@@ -84,7 +84,16 @@ function computeStringHash(str: string): string {
 }
 
 export function sanitizeAndValidateUrl(inputUrl: string): { success: true; url: string; hash: string } | { success: false; error: string } {
-  const result = urlSchema.safeParse(inputUrl);
+  if (!inputUrl || typeof inputUrl !== 'string') {
+    return { success: false, error: 'Please paste a valid media URL' };
+  }
+
+  let normalized = inputUrl.trim();
+  if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
+    normalized = `https://${normalized}`;
+  }
+
+  const result = urlSchema.safeParse(normalized);
   if (!result.success) {
     return {
       success: false,

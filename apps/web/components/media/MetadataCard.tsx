@@ -5,7 +5,7 @@ import { MediaMetadata, QualityCategory, QualityOption } from '@mediahub/types';
 import { formatDuration, formatBytes } from '@mediahub/utils';
 import { PlatformBadge } from './PlatformBadge';
 import { useDownloadMedia } from '../../hooks/useDownloadMedia';
-import { Download, Clock, User, Film, Music, CheckCircle2, Loader2, XCircle, AlertCircle, Eye, Calendar, Info, Cpu } from 'lucide-react';
+import { Download, Clock, User, Film, Music, CheckCircle2, Loader2, XCircle, AlertCircle, Eye, Calendar, Info, Cpu, Heart, Sparkles, Monitor } from 'lucide-react';
 
 interface MetadataCardProps {
   metadata: MediaMetadata;
@@ -26,8 +26,17 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
     const ext = activeFormat.ext || (activeTab === 'audio' ? 'mp3' : 'mp4');
     const safeTitle = metadata.title.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 40);
     const filename = `${safeTitle}-${activeFormat.formatId}.${ext}`;
-    
+
     startDownload(metadata.url, activeFormat.formatId, filename);
+  };
+
+  const getFormatSizeDisplay = (fmt: QualityOption): string => {
+    const size = fmt.filesize || fmt.filesizeApprox;
+    if (size && size > 0) return formatBytes(size);
+    if (fmt.filesizeEstimated && fmt.filesizeEstimated > 0) {
+      return `~${formatBytes(fmt.filesizeEstimated)} (Est.)`;
+    }
+    return 'Stream';
   };
 
   return (
@@ -53,6 +62,11 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
               {formatDuration(metadata.duration)}
             </div>
           )}
+          {metadata.aspectRatio && (
+            <div className="absolute top-2 left-2 bg-indigo-950/80 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-mono text-indigo-300 border border-indigo-500/30">
+              {metadata.aspectRatio}
+            </div>
+          )}
         </div>
 
         {/* Info */}
@@ -60,9 +74,10 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <PlatformBadge platform={metadata.platform} />
-              {metadata.cachedAt && (
-                <span className="text-[10px] text-indigo-300 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20 font-medium">
-                  ⚡ 6h Cache Hit
+              {metadata.width && metadata.height && (
+                <span className="text-[10px] text-slate-300 bg-slate-800/80 px-2 py-0.5 rounded border border-white/10 font-mono">
+                  <Monitor className="w-3 h-3 inline mr-1 text-indigo-400" />
+                  {metadata.width}×{metadata.height} {metadata.aspectRatio ? `(${metadata.aspectRatio})` : ''}
                 </span>
               )}
             </div>
@@ -81,16 +96,22 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
           </h3>
 
           <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400">
-            {metadata.uploader && (
+            {(metadata.uploader || metadata.channel) && (
               <span className="flex items-center gap-1">
                 <User className="w-3.5 h-3.5 text-slate-500" />
-                {metadata.uploader}
+                {metadata.uploader || metadata.channel}
               </span>
             )}
             {metadata.viewCount && (
               <span className="flex items-center gap-1">
                 <Eye className="w-3.5 h-3.5 text-slate-500" />
                 {metadata.viewCount.toLocaleString()} views
+              </span>
+            )}
+            {metadata.likeCount && (
+              <span className="flex items-center gap-1">
+                <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500/20" />
+                {metadata.likeCount.toLocaleString()} likes
               </span>
             )}
             {metadata.uploadDate && (
@@ -105,7 +126,7 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
 
       {/* Media Inspector Drawer */}
       {showInspector && (
-        <div className="bg-slate-950/80 rounded-xl p-4 border border-white/10 text-xs space-y-2 animate-in fade-in slide-in-from-top-2">
+        <div className="bg-slate-950/80 rounded-xl p-4 border border-white/10 text-xs space-y-3 animate-in fade-in slide-in-from-top-2">
           <p className="font-semibold text-indigo-400 flex items-center gap-1">
             <Cpu className="w-3.5 h-3.5" /> Extended Media Inspector
           </p>
@@ -114,11 +135,15 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
               {metadata.description}
             </p>
           )}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-slate-400 font-mono text-[11px] pt-1">
-            <div>Format ID: <span className="text-white">{activeFormat?.formatId || 'N/A'}</span></div>
-            <div>Video Codec: <span className="text-white">{activeFormat?.vcodec || 'N/A'}</span></div>
-            <div>Audio Codec: <span className="text-white">{activeFormat?.acodec || 'N/A'}</span></div>
-            <div>FPS: <span className="text-white">{activeFormat?.fps || 'N/A'}</span></div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-slate-400 font-mono text-[11px] pt-1">
+            <div>Format ID: <span className="text-white font-semibold">{activeFormat?.formatId || 'N/A'}</span></div>
+            <div>Resolution: <span className="text-white font-semibold">{activeFormat?.width && activeFormat?.height ? `${activeFormat.width}×${activeFormat.height}` : activeFormat?.resolution || 'N/A'}</span></div>
+            <div>Aspect Ratio: <span className="text-white font-semibold">{activeFormat?.aspectRatio || metadata.aspectRatio || 'N/A'}</span></div>
+            <div>Video Codec: <span className="text-white font-semibold">{activeFormat?.vcodec || 'N/A'}</span></div>
+            <div>Audio Codec: <span className="text-white font-semibold">{activeFormat?.acodec || 'N/A'}</span></div>
+            <div>FPS: <span className="text-white font-semibold">{activeFormat?.fps ? `${activeFormat.fps} FPS` : 'N/A'}</span></div>
+            <div>Bitrate: <span className="text-white font-semibold">{activeFormat?.tbr ? `${activeFormat.tbr} kbps` : 'N/A'}</span></div>
+            <div>HDR Status: <span className="text-emerald-400 font-semibold">{activeFormat?.hdr ? 'HDR Active' : 'SDR'}</span></div>
           </div>
         </div>
       )}
@@ -146,39 +171,52 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
         </div>
 
         {/* Formats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
           {currentFormats.length === 0 ? (
             <p className="text-xs text-slate-500 col-span-2 py-4 text-center">No specific {activeTab} streams found. Try Combined formats.</p>
           ) : (
             currentFormats.map((fmt) => {
               const isSelected = (selectedFormatId || activeFormat?.formatId) === fmt.formatId;
+              const resLabel = fmt.width && fmt.height ? `${fmt.width}×${fmt.height}` : fmt.resolution || fmt.qualityLabel || 'Standard Quality';
               return (
                 <button
                   key={fmt.formatId}
                   onClick={() => setSelectedFormatId(fmt.formatId)}
-                  className={`flex items-center justify-between p-3 rounded-xl border text-left transition-all ${
+                  className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition-all ${
                     isSelected
                       ? 'bg-indigo-950/40 border-indigo-500/50 text-white ring-1 ring-indigo-500/40'
                       : 'bg-slate-900/50 border-white/5 text-slate-300 hover:bg-slate-800/60'
                   }`}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2.5">
                     {isSelected ? (
                       <CheckCircle2 className="w-4 h-4 text-indigo-400 shrink-0" />
                     ) : (
                       <div className="w-4 h-4 rounded-full border border-slate-600 shrink-0" />
                     )}
                     <div>
-                      <p className="text-xs font-semibold text-white">
-                        {fmt.qualityLabel || fmt.resolution || 'Standard Quality'}
-                      </p>
-                      <p className="text-[10px] text-slate-400 uppercase">
-                        {fmt.ext} • {fmt.fps ? `${fmt.fps}fps` : 'Stream'}
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs font-bold text-white">
+                          {resLabel}
+                        </p>
+                        {fmt.hdr && (
+                          <span className="bg-amber-500/20 text-amber-300 text-[9px] font-extrabold px-1.5 py-0.2 rounded border border-amber-500/40">
+                            HDR
+                          </span>
+                        )}
+                        {fmt.aspectRatio && (
+                          <span className="text-[9px] text-slate-400 font-mono bg-slate-800 px-1 py-0.2 rounded">
+                            {fmt.aspectRatio}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-400 uppercase tracking-tight mt-0.5">
+                        {fmt.ext} • {fmt.vcodec ? fmt.vcodec.split('.')[0] : 'stream'}{fmt.acodec && fmt.acodec !== 'none' ? `/${fmt.acodec.split('.')[0]}` : ''} {fmt.fps ? `• ${fmt.fps}fps` : ''} {fmt.tbr ? `• ${fmt.tbr}k` : ''}
                       </p>
                     </div>
                   </div>
-                  <span className="text-xs font-mono text-indigo-300 font-medium">
-                    {formatBytes(fmt.filesize || fmt.filesizeApprox)}
+                  <span className="text-xs font-mono text-indigo-300 font-semibold shrink-0 ml-2">
+                    {getFormatSizeDisplay(fmt)}
                   </span>
                 </button>
               );
@@ -214,7 +252,7 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
             className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold text-sm py-3.5 px-6 rounded-xl shadow-lg shadow-indigo-600/30 transition-all duration-200 disabled:opacity-40"
           >
             <Download className="w-4 h-4" />
-            <span>Download Selected Format ({activeFormat?.qualityLabel || activeFormat?.resolution || 'Media'})</span>
+            <span>Download {activeFormat?.width && activeFormat?.height ? `${activeFormat.width}×${activeFormat.height}` : activeFormat?.resolution || 'Selected Format'} ({getFormatSizeDisplay(activeFormat)})</span>
           </button>
         )}
       </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { detectPlatform, sanitizeAndValidateUrl } from '@mediahub/utils';
 import { PlatformBadge } from './PlatformBadge';
 import { Search, ArrowRight, Loader2, Clipboard } from 'lucide-react';
@@ -13,35 +13,26 @@ interface UrlInputFormProps {
 export function UrlInputForm({ onAnalyze, isLoading }: UrlInputFormProps) {
   const [url, setUrl] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
+  const lastAnalyzedUrl = useRef<string>('');
 
   const platform = detectPlatform(url);
 
   // Debounced auto-analyze on typing / pasting valid URL
   useEffect(() => {
-    if (!url.trim()) return;
+    const trimmed = url.trim();
+    if (!trimmed || trimmed === lastAnalyzedUrl.current) return;
 
     const timer = setTimeout(() => {
-      const val = sanitizeAndValidateUrl(url);
+      const val = sanitizeAndValidateUrl(trimmed);
       if (val.success) {
         setValidationError(null);
+        lastAnalyzedUrl.current = val.url;
         onAnalyze(val.url);
       }
-    }, 400);
+    }, 500);
 
     return () => clearTimeout(timer);
-  }, [url]);
-
-  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    const pastedText = e.clipboardData.getData('text');
-    if (pastedText) {
-      const val = sanitizeAndValidateUrl(pastedText);
-      if (val.success) {
-        setValidationError(null);
-        setUrl(pastedText);
-        onAnalyze(pastedText);
-      }
-    }
-  };
+  }, [url, onAnalyze]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -57,6 +48,7 @@ export function UrlInputForm({ onAnalyze, isLoading }: UrlInputFormProps) {
       return;
     }
     setValidationError(null);
+    lastAnalyzedUrl.current = val.url;
     onAnalyze(val.url);
   };
 
@@ -70,10 +62,9 @@ export function UrlInputForm({ onAnalyze, isLoading }: UrlInputFormProps) {
           </div>
 
           <input
-            type="url"
+            type="text"
             value={url}
             onChange={handleChange}
-            onPaste={handlePaste}
             placeholder="Paste a media link (YouTube, Instagram, X, TikTok, Reddit...)"
             disabled={isLoading}
             className="w-full bg-transparent text-white placeholder-slate-500 text-sm sm:text-base focus:outline-none px-2 py-3 disabled:opacity-50"
@@ -113,7 +104,7 @@ export function UrlInputForm({ onAnalyze, isLoading }: UrlInputFormProps) {
 
       <div className="flex items-center justify-between px-2 text-xs text-slate-500">
         <span className="flex items-center gap-1">
-          <Clipboard className="w-3 h-3" /> Debounced auto-analyze on paste (400ms)
+          <Clipboard className="w-3 h-3" /> Auto-detects YouTube, Instagram, X, TikTok, Reddit, Facebook...
         </span>
         <div className="flex gap-3">
           <span>YouTube</span>
