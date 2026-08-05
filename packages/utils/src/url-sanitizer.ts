@@ -1,5 +1,63 @@
 import { z } from 'zod';
 
+const TRACKING_PARAMS = new Set([
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_term',
+  'utm_content',
+  'igshid',
+  'igsh',
+  'si',
+  'feature',
+  'app',
+  'fbclid',
+  'ref',
+  's',
+  'cxt',
+  't',
+  'gclid',
+  'msclkid',
+]);
+
+export function normalizeMediaUrl(inputUrl: string): string {
+  if (!inputUrl || typeof inputUrl !== 'string') return inputUrl;
+
+  let urlStr = inputUrl.trim();
+  if (!urlStr.startsWith('http://') && !urlStr.startsWith('https://')) {
+    urlStr = `https://${urlStr}`;
+  }
+
+  try {
+    const parsed = new URL(urlStr);
+    let hostname = parsed.hostname.toLowerCase();
+
+    // 1. Hostname Normalization
+    if (hostname === 'old.reddit.com' || hostname === 'm.reddit.com') {
+      hostname = 'www.reddit.com';
+    } else if (hostname === 'instagr.am' || hostname === 'instagram.com') {
+      hostname = 'www.instagram.com';
+    } else if (hostname === 'twitter.com') {
+      hostname = 'x.com';
+    }
+
+    parsed.hostname = hostname;
+
+    // 2. Strip tracking query parameters
+    const searchParams = new URLSearchParams(parsed.search);
+    for (const key of Array.from(searchParams.keys())) {
+      if (TRACKING_PARAMS.has(key.toLowerCase())) {
+        searchParams.delete(key);
+      }
+    }
+    parsed.search = searchParams.toString();
+
+    return parsed.toString();
+  } catch {
+    return inputUrl;
+  }
+}
+
 // SSRF & Invalid Host Checker
 function isPrivateHost(hostname: string): boolean {
   const host = hostname.toLowerCase();
@@ -88,10 +146,7 @@ export function sanitizeAndValidateUrl(inputUrl: string): { success: true; url: 
     return { success: false, error: 'Please paste a valid media URL' };
   }
 
-  let normalized = inputUrl.trim();
-  if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
-    normalized = `https://${normalized}`;
-  }
+  const normalized = normalizeMediaUrl(inputUrl);
 
   const result = urlSchema.safeParse(normalized);
   if (!result.success) {

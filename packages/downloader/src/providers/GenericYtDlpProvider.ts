@@ -1,6 +1,6 @@
 import { IDownloaderProvider } from '../interfaces/IDownloaderProvider';
 import { MediaMetadata } from '@mediahub/types';
-import { detectPlatform } from '@mediahub/utils';
+import { detectPlatform, normalizeMediaUrl } from '@mediahub/utils';
 import { YtDlpWrapper, StreamResult } from '../yt-dlp/YtDlpWrapper';
 
 function calculateAspectRatio(w?: number, h?: number): string | undefined {
@@ -24,7 +24,8 @@ export class GenericYtDlpProvider implements IDownloaderProvider {
     return true; // Fallback provider handles any URL
   }
 
-  async extractMetadata(url: string, urlHash: string): Promise<MediaMetadata> {
+  async extractMetadata(rawUrl: string, urlHash: string): Promise<MediaMetadata> {
+    const url = normalizeMediaUrl(rawUrl);
     const json = await YtDlpWrapper.dumpJson(url);
     const qualities = YtDlpWrapper.categorizeFormats(json.formats, json.duration);
     const platform = detectPlatform(url);
@@ -43,6 +44,7 @@ export class GenericYtDlpProvider implements IDownloaderProvider {
       thumbnail: json.thumbnail,
       viewCount: json.view_count,
       likeCount: json.like_count,
+      commentCount: json.comment_count,
       uploadDate: json.upload_date,
       description: json.description ? json.description.slice(0, 300) : undefined,
       width,

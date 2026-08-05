@@ -1,7 +1,9 @@
 import { execFile, spawn, ChildProcess } from 'node:child_process';
 import { Readable } from 'node:stream';
 import { promisify } from 'node:util';
+import fs from 'node:fs';
 import { CategorizedQualities, QualityOption, PlaylistMetadata, SubtitleOption } from '@mediahub/types';
+import { detectPlatform, normalizeMediaUrl } from '@mediahub/utils';
 import { ExecutableResolver } from './ExecutableResolver';
 
 const execFileAsync = promisify(execFile);
@@ -15,6 +17,7 @@ export interface YtDlpDumpJsonOutput {
   thumbnail?: string;
   view_count?: number;
   like_count?: number;
+  comment_count?: number;
   upload_date?: string;
   description?: string;
   width?: number;
@@ -72,14 +75,50 @@ function calculateEstimatedFilesize(duration?: number, tbr?: number, vbr?: numbe
   return Math.round(((bitrate * 1000) / 8) * duration);
 }
 
-const DEFAULT_YTDLP_HEADERS = [
-  '--user-agent',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  '--referer',
-  'https://www.google.com/',
-  '--add-header',
-  'Accept-Language: en-US,en;q=0.9',
-];
+function resolveCookiePath(): string | undefined {
+  const cookieCandidates = [
+    process.env.MEDIAHUB_INSTAGRAM_COOKIES,
+    process.env.INSTAGRAM_COOKIES_PATH,
+    process.env.MEDIAHUB_COOKIES_PATH,
+  ].filter(Boolean) as string[];
+
+  for (const candidate of cookieCandidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+function translateError(url: string, rawError: string): Error {
+  const err = rawError || '';
+  const isInstagram = url.includes('instagram.com') || url.includes('instagr.am');
+  const isReddit = url.includes('reddit.com') || url.includes('redd.it');
+
+  if (isInstagram && (err.includes('empty media response') || err.includes('login') || err.includes('Redirecting to login'))) {
+    return new Error('This Instagram media requires authentication or is private.');
+  }
+  if (isReddit && (err.includes('403') || err.includes('Forbidden'))) {
+    return new Error('Reddit denied anonymous access. Content may require authentication or updated headers.');
+  }
+  if (err.includes('Private video') || err.includes('private media') || err.includes('login')) {
+    return new Error('This media is private or restricted.');
+  }
+  if (err.includes('404') || err.includes('Not Found') || err.includes('Video unavailable') || err.includes('Post not found')) {
+    return new Error('Media not found at this URL. Content may have been removed or deleted.');
+  }
+  if (err.includes('GeoRestricted') || err.includes('not available in your country') || err.includes('region')) {
+    return new Error('This media is unavailable in your region.');
+  }
+  if (err.includes('Unsupported URL') || err.includes('no suitable extractor')) {
+    return new Error(`This URL is not currently supported: ${url}`);
+  }
+  if (err.includes('ETIMEDOUT') || err.includes('ECONNREFUSED') || err.includes('Unable to download webpage')) {
+    return new Error('Unable to reach the media provider. Please check the link or network status.');
+  }
+
+  return new Error(`Failed to extract metadata for URL '${url}'. Please verify the link is public and accessible.`);
+}
 
 export class YtDlpWrapper {
   static async getVersion(): Promise<string> {
@@ -87,7 +126,7 @@ export class YtDlpWrapper {
     return resolved.version;
   }
 
-  static async dumpJson(url: string, retries = 2, delayMs = 1000): Promise<YtDlpDumpJsonOutput> {
+  static async dumpJson(rawUrl: string): Promise<YtDlpDumpJsonOutput> {
     const resolved = await ExecutableResolver.resolveYtDlp();
 
     if (!resolved.available) {
@@ -96,53 +135,135 @@ export class YtDlpWrapper {
       );
     }
 
+    const url = normalizeMediaUrl(rawUrl);
+    const platform = detectPlatform(url);
+    const cookiePath = resolveCookiePath();
+
+    const userAgent =
+      process.env.YTDLP_USER_AGENT ||
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+    const timeoutMs = parseInt(process.env.YTDLP_TIMEOUT || '30000', 10);
+    const maxRetries = parseInt(process.env.YTDLP_RETRIES || '3', 10);
+
     let lastError: any;
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      try {
-        const { stdout } = await execFileAsync(
-          resolved.command,
-          [...resolved.args, ...DEFAULT_YTDLP_HEADERS, '--dump-json', '--no-warnings', '--no-playlist', url],
-          { maxBuffer: 30 * 1024 * 1024 }
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const extraArgs: string[] = [];
+
+      // Attempt 1: Standard extraction with Chrome User-Agent
+      if (attempt === 1) {
+        extraArgs.push(
+          '--user-agent',
+          userAgent,
+          '--referer',
+          'https://www.google.com/',
+          '--add-header',
+          'Accept-Language: en-US,en;q=0.9'
         );
+      }
+      // Attempt 2: Platform-specific referer and navigation headers
+      else if (attempt === 2) {
+        if (platform === 'REDDIT') {
+          extraArgs.push(
+            '--user-agent',
+            userAgent,
+            '--referer',
+            'https://www.reddit.com/',
+            '--add-header',
+            'Sec-Fetch-Mode: navigate',
+            '--add-header',
+            'Sec-Fetch-Site: none'
+          );
+        } else if (platform === 'INSTAGRAM') {
+          extraArgs.push(
+            '--user-agent',
+            userAgent,
+            '--referer',
+            'https://www.instagram.com/',
+            '--add-header',
+            'Sec-Fetch-Site: same-origin',
+            '--add-header',
+            'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+          );
+        } else {
+          extraArgs.push('--user-agent', userAgent, '--referer', 'https://www.google.com/');
+        }
+      }
+      // Attempt 3: Authenticated cookie extraction (if cookie file available)
+      else if (attempt >= 3) {
+        extraArgs.push('--user-agent', userAgent);
+        if (cookiePath) {
+          extraArgs.push('--cookies', cookiePath);
+        } else {
+          extraArgs.push('--referer', 'https://www.google.com/');
+        }
+      }
+
+      const args = [...resolved.args, ...extraArgs, '--dump-json', '--no-warnings', '--no-playlist', url];
+      const startTime = Date.now();
+
+      try {
+        const { stdout } = await execFileAsync(resolved.command, args, {
+          maxBuffer: 30 * 1024 * 1024,
+          timeout: timeoutMs,
+        });
+
+        const durationMs = Date.now() - startTime;
+
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`[YtDlp Dev Log] Metadata Extraction Success (Attempt ${attempt}/${maxRetries})`);
+          console.log(`  Normalized URL: ${url}`);
+          console.log(`  Provider: ${platform}`);
+          console.log(`  Command: ${resolved.command} ${args.join(' ')}`);
+          console.log(`  Execution Time: ${durationMs}ms`);
+        }
+
         return JSON.parse(stdout) as YtDlpDumpJsonOutput;
       } catch (err: any) {
         lastError = err;
+        const durationMs = Date.now() - startTime;
+
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(`[YtDlp Dev Log] Attempt ${attempt}/${maxRetries} Failed`);
+          console.warn(`  Normalized URL: ${url}`);
+          console.warn(`  Provider: ${platform}`);
+          console.warn(`  Command: ${resolved.command} ${args.join(' ')}`);
+          console.warn(`  Error: ${err.message || err.stderr}`);
+          console.warn(`  Execution Time: ${durationMs}ms`);
+        }
+
         if (err.code === 'ENOENT') {
           throw new Error(
-            `yt-dlp executable could not be executed at '${resolved.displayPath}'. Please verify installation or set YT_DLP_PATH. See docs/development.md`
+            `yt-dlp executable could not be executed at '${resolved.displayPath}'. Please verify installation or set YT_DLP_PATH.`
           );
         }
-        if (attempt < retries) {
-          await new Promise((res) => setTimeout(res, delayMs * attempt));
+
+        if (attempt < maxRetries) {
+          await new Promise((res) => setTimeout(res, 800 * attempt));
         }
       }
     }
 
-    const errorMsg = lastError?.message || 'yt-dlp extraction error';
-    if (errorMsg.includes('Unsupported URL')) {
-      throw new Error(`Unsupported media URL or format. Please verify the URL: ${url}`);
-    }
-    if (errorMsg.includes('Private video') || errorMsg.includes('login')) {
-      throw new Error(`This media is private or requires account login.`);
-    }
-    if (errorMsg.includes('404') || errorMsg.includes('Not Found')) {
-      throw new Error(`Media not found at ${url}. Content may have been removed or deleted.`);
-    }
-
-    throw new Error(`Failed to extract media metadata for URL '${url}' after ${retries} attempts: ${errorMsg}`);
+    const rawErrorMsg = lastError?.stderr || lastError?.message || 'yt-dlp extraction error';
+    throw translateError(url, rawErrorMsg);
   }
 
   static async parsePlaylist(playlistUrl: string): Promise<PlaylistMetadata> {
     const resolved = await ExecutableResolver.resolveYtDlp();
 
     if (!resolved.available) {
-      throw new Error(`yt-dlp executable could not be found on the host system. Please install yt-dlp or set YT_DLP_PATH. See docs/development.md`);
+      throw new Error(`yt-dlp executable could not be found on the host system. See docs/development.md`);
     }
+
+    const url = normalizeMediaUrl(playlistUrl);
+    const userAgent =
+      process.env.YTDLP_USER_AGENT ||
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
     try {
       const { stdout } = await execFileAsync(
         resolved.command,
-        [...resolved.args, ...DEFAULT_YTDLP_HEADERS, '--flat-playlist', '--dump-single-json', '--no-warnings', playlistUrl],
+        [...resolved.args, '--user-agent', userAgent, '--flat-playlist', '--dump-single-json', '--no-warnings', url],
         { maxBuffer: 30 * 1024 * 1024 }
       );
       const json = JSON.parse(stdout) as YtDlpDumpJsonOutput;
@@ -157,13 +278,13 @@ export class YtDlpWrapper {
       }));
 
       return {
-        rawUrl: playlistUrl,
-        title: json.title || 'YouTube Playlist',
+        rawUrl: url,
+        title: json.title || 'Playlist',
         videoCount: items.length,
         items,
       };
     } catch (err: any) {
-      throw new Error(`Failed to parse playlist '${playlistUrl}': ${err.message || 'Invalid or private playlist'}`);
+      throw translateError(url, err.stderr || err.message);
     }
   }
 
@@ -250,13 +371,22 @@ export class YtDlpWrapper {
     };
   }
 
-  static async createStream(url: string, formatId: string): Promise<StreamResult> {
+  static async createStream(rawUrl: string, formatId: string): Promise<StreamResult> {
     const resolved = await ExecutableResolver.resolveYtDlp();
     if (!resolved.available) {
-      throw new Error(`yt-dlp executable could not be found for streaming. Please install yt-dlp or set YT_DLP_PATH. See docs/development.md`);
+      throw new Error(`yt-dlp executable could not be found for streaming.`);
     }
 
-    const args = [...resolved.args, ...DEFAULT_YTDLP_HEADERS, '-f', formatId, '-o', '-', '--no-warnings', '--no-playlist', url];
+    const url = normalizeMediaUrl(rawUrl);
+    const userAgent =
+      process.env.YTDLP_USER_AGENT ||
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+    const cookiePath = resolveCookiePath();
+
+    const extraArgs = ['--user-agent', userAgent, '--referer', 'https://www.google.com/'];
+    if (cookiePath) extraArgs.push('--cookies', cookiePath);
+
+    const args = [...resolved.args, ...extraArgs, '-f', formatId, '-o', '-', '--no-warnings', '--no-playlist', url];
     const child = spawn(resolved.command, args);
     return {
       stream: child.stdout,
@@ -264,13 +394,22 @@ export class YtDlpWrapper {
     };
   }
 
-  static async createAudioExtractStream(url: string, audioFormat: 'mp3' | 'm4a' | 'aac'): Promise<StreamResult> {
+  static async createAudioExtractStream(rawUrl: string, audioFormat: 'mp3' | 'm4a' | 'aac'): Promise<StreamResult> {
     const resolved = await ExecutableResolver.resolveYtDlp();
     if (!resolved.available) {
-      throw new Error(`yt-dlp executable could not be found for audio extraction. Please install yt-dlp or set YT_DLP_PATH. See docs/development.md`);
+      throw new Error(`yt-dlp executable could not be found for audio extraction.`);
     }
 
-    const args = [...resolved.args, ...DEFAULT_YTDLP_HEADERS, '-x', '--audio-format', audioFormat, '-o', '-', '--no-warnings', '--no-playlist', url];
+    const url = normalizeMediaUrl(rawUrl);
+    const userAgent =
+      process.env.YTDLP_USER_AGENT ||
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+    const cookiePath = resolveCookiePath();
+
+    const extraArgs = ['--user-agent', userAgent, '--referer', 'https://www.google.com/'];
+    if (cookiePath) extraArgs.push('--cookies', cookiePath);
+
+    const args = [...resolved.args, ...extraArgs, '-x', '--audio-format', audioFormat, '-o', '-', '--no-warnings', '--no-playlist', url];
     const child = spawn(resolved.command, args);
     return {
       stream: child.stdout,

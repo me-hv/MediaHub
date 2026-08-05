@@ -51,6 +51,7 @@ export interface MediaMetadata {
   thumbnail?: string;
   viewCount?: number;
   likeCount?: number;
+  commentCount?: number;
   uploadDate?: string;
   description?: string;
   width?: number;
