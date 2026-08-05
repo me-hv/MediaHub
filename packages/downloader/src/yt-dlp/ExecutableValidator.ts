@@ -6,14 +6,14 @@ export class ExecutableValidator {
 
     const ytDlp = await ExecutableResolver.resolveYtDlp();
     if (ytDlp.available) {
-      console.log(`✓ yt-dlp binary resolved: ${ytDlp.path} (Version: ${ytDlp.version})`);
+      console.log(`✓ yt-dlp binary resolved via [${ytDlp.displayPath}] (Version: ${ytDlp.version})`);
     } else {
-      console.warn(`⚠️ yt-dlp binary not detected in PATH or YT_DLP_PATH. Simulated mock mode active for development. See docs/development.md`);
+      console.warn(`⚠️ yt-dlp binary not detected in PATH, YT_DLP_PATH, or Python module. See docs/development.md`);
     }
 
     const ffmpeg = await ExecutableResolver.resolveFfmpeg();
     if (ffmpeg.available) {
-      console.log(`✓ ffmpeg binary resolved: ${ffmpeg.path} (Version: ${ffmpeg.version})`);
+      console.log(`✓ ffmpeg binary resolved via [${ffmpeg.displayPath}] (Version: ${ffmpeg.version})`);
     } else {
       console.log(`ℹ️ ffmpeg binary not detected (optional for basic stream extraction).`);
     }

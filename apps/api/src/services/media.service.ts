@@ -7,32 +7,44 @@ import { logger } from '../utils/logger';
 const inMemoryCache = new Map<string, { metadata: MediaMetadata; expiresAt: number }>();
 
 export class MediaService {
+  static clearCache() {
+    inMemoryCache.clear();
+    logger.info('In-memory media metadata cache cleared.');
+  }
+
   static async analyzeMedia(url: string, urlHash: string): Promise<MediaMetadata> {
     const now = new Date();
 
-    // 1. Check Prisma Cache
+    // 1. Check Prisma Cache (if database available)
     try {
       const cached = await prisma.mediaCache.findUnique({
         where: { urlHash },
       });
 
       if (cached && cached.expiresAt > now) {
-        logger.info({ urlHash }, 'Serving media metadata from PostgreSQL cache');
-        return cached.metadata as unknown as MediaMetadata;
+        const cachedMeta = cached.metadata as unknown as MediaMetadata;
+        // Ensure no stale demo metadata is returned
+        if (!cachedMeta.title.includes('MediaHub Demo Video')) {
+          logger.info({ urlHash, title: cachedMeta.title }, 'Serving media metadata from PostgreSQL cache');
+          return cachedMeta;
+        }
       }
     } catch (err: any) {
-      logger.warn({ error: err.message }, 'Postgres query failed, falling back to memory cache');
+      logger.warn({ error: err.message }, 'Postgres query failed, falling back to live extraction');
     }
 
     // 2. Check Memory Cache fallback
     const memCached = inMemoryCache.get(urlHash);
     if (memCached && memCached.expiresAt > Date.now()) {
-      logger.info({ urlHash }, 'Serving media metadata from in-memory fallback cache');
-      return memCached.metadata;
+      if (!memCached.metadata.title.includes('MediaHub Demo Video')) {
+        logger.info({ urlHash, title: memCached.metadata.title }, 'Serving media metadata from in-memory fallback cache');
+        return memCached.metadata;
+      }
+      inMemoryCache.delete(urlHash); // Purge stale demo entry
     }
 
-    // 3. Extract Metadata via Provider Engine
-    logger.info({ url, urlHash }, 'Extracting metadata from provider engine');
+    // 3. Extract Real Live Metadata via Provider Engine (yt-dlp)
+    logger.info({ url, urlHash }, 'Extracting real live metadata from provider engine');
     const provider = ProviderFactory.getProvider(url);
     const metadata = await provider.extractMetadata(url, urlHash);
     metadata.cachedAt = new Date().toISOString();

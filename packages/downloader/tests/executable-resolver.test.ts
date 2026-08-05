@@ -3,9 +3,9 @@ import { ExecutableResolver, ExecutableValidator } from '../src';
 
 describe('ExecutableResolver & ExecutableValidator', () => {
   it('should discover candidate executable search paths', () => {
-    const paths = ExecutableResolver.findYtDlpCandidatePaths();
-    expect(paths.length).toBeGreaterThan(0);
-    expect(paths).toContain('yt-dlp');
+    const candidates = ExecutableResolver.getCandidates();
+    expect(candidates.length).toBeGreaterThan(0);
+    expect(candidates.some((c) => c.displayPath.includes('yt-dlp') || c.displayPath.includes('yt_dlp'))).toBe(true);
   });
 
   it('should resolve yt-dlp binary status', async () => {

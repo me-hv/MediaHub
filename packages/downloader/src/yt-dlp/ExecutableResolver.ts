@@ -5,7 +5,9 @@ import path from 'node:path';
 const execFileAsync = promisify(execFile);
 
 export interface ResolvedExecutable {
-  path: string;
+  command: string;
+  args: string[];
+  displayPath: string;
   version: string;
   available: boolean;
 }
@@ -14,25 +16,29 @@ export class ExecutableResolver {
   private static cachedYtDlp: ResolvedExecutable | null = null;
   private static cachedFfmpeg: ResolvedExecutable | null = null;
 
-  static findYtDlpCandidatePaths(): string[] {
-    const candidates: string[] = [];
+  static getCandidates(): Array<{ command: string; args: string[]; displayPath: string }> {
+    const candidates: Array<{ command: string; args: string[]; displayPath: string }> = [];
 
     // 1. YT_DLP_PATH env var
     if (process.env.YT_DLP_PATH) {
-      candidates.push(process.env.YT_DLP_PATH);
+      candidates.push({ command: process.env.YT_DLP_PATH, args: [], displayPath: process.env.YT_DLP_PATH });
     }
 
-    // 2. Platform-specific binary names in PATH
+    // 2. Direct binary names
     const isWin = process.platform === 'win32';
     const binName = isWin ? 'yt-dlp.exe' : 'yt-dlp';
-    candidates.push(binName);
-    candidates.push('yt-dlp');
+    candidates.push({ command: binName, args: [], displayPath: binName });
+    candidates.push({ command: 'yt-dlp', args: [], displayPath: 'yt-dlp' });
 
-    // 3. Local bundled binary candidate locations
+    // 3. Python module runners (python -m yt_dlp, python3 -m yt_dlp, py -m yt_dlp)
+    candidates.push({ command: 'python', args: ['-m', 'yt_dlp'], displayPath: 'python -m yt_dlp' });
+    candidates.push({ command: 'python3', args: ['-m', 'yt_dlp'], displayPath: 'python3 -m yt_dlp' });
+    candidates.push({ command: 'py', args: ['-m', 'yt_dlp'], displayPath: 'py -m yt_dlp' });
+
+    // 4. Bundled binary candidates
     const cwd = process.cwd();
-    candidates.push(path.join(cwd, binName));
-    candidates.push(path.join(cwd, 'bin', binName));
-    candidates.push(path.join(cwd, '..', '..', 'bin', binName));
+    candidates.push({ command: path.join(cwd, binName), args: [], displayPath: path.join(cwd, binName) });
+    candidates.push({ command: path.join(cwd, 'bin', binName), args: [], displayPath: path.join(cwd, 'bin', binName) });
 
     return candidates;
   }
@@ -40,47 +46,71 @@ export class ExecutableResolver {
   static async resolveYtDlp(forceRefresh = false): Promise<ResolvedExecutable> {
     if (this.cachedYtDlp && !forceRefresh) return this.cachedYtDlp;
 
-    const candidates = this.findYtDlpCandidatePaths();
+    const candidates = this.getCandidates();
 
-    for (const candidatePath of candidates) {
+    for (const cand of candidates) {
       try {
-        const { stdout } = await execFileAsync(candidatePath, ['--version'], { timeout: 4000 });
+        const { stdout } = await execFileAsync(cand.command, [...cand.args, '--version'], { timeout: 4000 });
         const version = stdout.trim();
         if (version) {
-          this.cachedYtDlp = { path: candidatePath, version, available: true };
+          this.cachedYtDlp = {
+            command: cand.command,
+            args: cand.args,
+            displayPath: cand.displayPath,
+            version,
+            available: true,
+          };
           return this.cachedYtDlp;
         }
       } catch {
-        // Continue checking next candidate
+        // Try next candidate
       }
     }
 
-    this.cachedYtDlp = { path: 'yt-dlp', version: 'unavailable', available: false };
+    this.cachedYtDlp = {
+      command: 'yt-dlp',
+      args: [],
+      displayPath: 'yt-dlp (not found)',
+      version: 'unavailable',
+      available: false,
+    };
     return this.cachedYtDlp;
   }
 
   static async resolveFfmpeg(forceRefresh = false): Promise<ResolvedExecutable> {
     if (this.cachedFfmpeg && !forceRefresh) return this.cachedFfmpeg;
 
-    const candidates = [
-      process.env.FFMPEG_PATH,
-      process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg',
-      'ffmpeg',
-    ].filter(Boolean) as string[];
+    const candidates: Array<{ command: string; args: string[]; displayPath: string }> = [
+      ...(process.env.FFMPEG_PATH ? [{ command: process.env.FFMPEG_PATH, args: [], displayPath: process.env.FFMPEG_PATH }] : []),
+      { command: process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg', args: [], displayPath: 'ffmpeg' },
+      { command: 'ffmpeg', args: [], displayPath: 'ffmpeg' },
+    ];
 
-    for (const candidatePath of candidates) {
+    for (const cand of candidates) {
       try {
-        const { stdout } = await execFileAsync(candidatePath, ['-version'], { timeout: 4000 });
+        const { stdout } = await execFileAsync(cand.command, [...cand.args, '-version'], { timeout: 4000 });
         const match = stdout.match(/ffmpeg version ([^\s]+)/i);
         const version = match ? match[1] : 'detected';
-        this.cachedFfmpeg = { path: candidatePath, version, available: true };
+        this.cachedFfmpeg = {
+          command: cand.command,
+          args: cand.args,
+          displayPath: cand.displayPath,
+          version,
+          available: true,
+        };
         return this.cachedFfmpeg;
       } catch {
-        // Continue
+        // Try next candidate
       }
     }
 
-    this.cachedFfmpeg = { path: 'ffmpeg', version: 'unavailable', available: false };
+    this.cachedFfmpeg = {
+      command: 'ffmpeg',
+      args: [],
+      displayPath: 'ffmpeg (not found)',
+      version: 'unavailable',
+      available: false,
+    };
     return this.cachedFfmpeg;
   }
 }

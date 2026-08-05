@@ -53,12 +53,8 @@ export class YtDlpWrapper {
     const resolved = await ExecutableResolver.resolveYtDlp();
 
     if (!resolved.available) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.warn(`[YtDlpWrapper] Native yt-dlp binary not installed. Generating simulated metadata for: ${url}`);
-        return this.getMockMetadata(url);
-      }
       throw new Error(
-        `yt-dlp executable could not be found. Please install yt-dlp or configure YT_DLP_PATH environment variable. See docs/development.md`
+        `yt-dlp executable could not be found on the host system. Please install yt-dlp, python -m yt_dlp, or set YT_DLP_PATH. See docs/development.md`
       );
     }
 
@@ -66,16 +62,16 @@ export class YtDlpWrapper {
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
         const { stdout } = await execFileAsync(
-          resolved.path,
-          ['--dump-json', '--no-warnings', '--no-playlist', url],
-          { maxBuffer: 15 * 1024 * 1024 }
+          resolved.command,
+          [...resolved.args, '--dump-json', '--no-warnings', '--no-playlist', url],
+          { maxBuffer: 25 * 1024 * 1024 }
         );
         return JSON.parse(stdout) as YtDlpDumpJsonOutput;
       } catch (err: any) {
         lastError = err;
         if (err.code === 'ENOENT') {
           throw new Error(
-            `yt-dlp executable could not be found at path '${resolved.path}'. Please install yt-dlp or configure YT_DLP_PATH. See docs/development.md`
+            `yt-dlp executable could not be executed at '${resolved.displayPath}'. Please verify installation or set YT_DLP_PATH. See docs/development.md`
           );
         }
         if (attempt < retries) {
@@ -83,33 +79,21 @@ export class YtDlpWrapper {
         }
       }
     }
-    throw new Error(`Failed to extract media metadata after ${retries} attempts: ${lastError?.message || 'yt-dlp process error'}`);
+    throw new Error(`Failed to extract media metadata for URL '${url}' after ${retries} attempts: ${lastError?.message || 'yt-dlp extraction error'}`);
   }
 
   static async parsePlaylist(playlistUrl: string): Promise<PlaylistMetadata> {
     const resolved = await ExecutableResolver.resolveYtDlp();
 
     if (!resolved.available) {
-      if (process.env.NODE_ENV !== 'production') {
-        return {
-          rawUrl: playlistUrl,
-          title: 'Simulated Demo Playlist',
-          videoCount: 3,
-          items: [
-            { id: 'v1', title: 'Video Item 1', rawUrl: `${playlistUrl}&v=1`, duration: 210, position: 1 },
-            { id: 'v2', title: 'Video Item 2', rawUrl: `${playlistUrl}&v=2`, duration: 180, position: 2 },
-            { id: 'v3', title: 'Video Item 3', rawUrl: `${playlistUrl}&v=3`, duration: 320, position: 3 },
-          ],
-        };
-      }
-      throw new Error(`yt-dlp executable could not be found. Please install yt-dlp or configure YT_DLP_PATH. See docs/development.md`);
+      throw new Error(`yt-dlp executable could not be found on the host system. Please install yt-dlp or set YT_DLP_PATH. See docs/development.md`);
     }
 
     try {
       const { stdout } = await execFileAsync(
-        resolved.path,
-        ['--flat-playlist', '--dump-single-json', '--no-warnings', playlistUrl],
-        { maxBuffer: 20 * 1024 * 1024 }
+        resolved.command,
+        [...resolved.args, '--flat-playlist', '--dump-single-json', '--no-warnings', playlistUrl],
+        { maxBuffer: 30 * 1024 * 1024 }
       );
       const json = JSON.parse(stdout) as YtDlpDumpJsonOutput;
       const entries = json.entries || [];
@@ -129,7 +113,7 @@ export class YtDlpWrapper {
         items,
       };
     } catch (err: any) {
-      throw new Error(`Failed to parse playlist: ${err.message || 'Invalid or private playlist'}`);
+      throw new Error(`Failed to parse playlist '${playlistUrl}': ${err.message || 'Invalid or private playlist'}`);
     }
   }
 
@@ -198,17 +182,20 @@ export class YtDlpWrapper {
     }
 
     return {
-      video: video.slice(-8),
-      audio: audio.slice(-5),
-      combined: combined.slice(-8),
+      video: video.slice(-12),
+      audio: audio.slice(-8),
+      combined: combined.slice(-12),
     };
   }
 
   static async createStream(url: string, formatId: string): Promise<StreamResult> {
     const resolved = await ExecutableResolver.resolveYtDlp();
-    const bin = resolved.available ? resolved.path : 'yt-dlp';
-    const args = ['-f', formatId, '-o', '-', '--no-warnings', '--no-playlist', url];
-    const child = spawn(bin, args);
+    if (!resolved.available) {
+      throw new Error(`yt-dlp executable could not be found for streaming. Please install yt-dlp or set YT_DLP_PATH. See docs/development.md`);
+    }
+
+    const args = [...resolved.args, '-f', formatId, '-o', '-', '--no-warnings', '--no-playlist', url];
+    const child = spawn(resolved.command, args);
     return {
       stream: child.stdout,
       process: child,
@@ -217,32 +204,15 @@ export class YtDlpWrapper {
 
   static async createAudioExtractStream(url: string, audioFormat: 'mp3' | 'm4a' | 'aac'): Promise<StreamResult> {
     const resolved = await ExecutableResolver.resolveYtDlp();
-    const bin = resolved.available ? resolved.path : 'yt-dlp';
-    const args = ['-x', '--audio-format', audioFormat, '-o', '-', '--no-warnings', '--no-playlist', url];
-    const child = spawn(bin, args);
+    if (!resolved.available) {
+      throw new Error(`yt-dlp executable could not be found for audio extraction. Please install yt-dlp or set YT_DLP_PATH. See docs/development.md`);
+    }
+
+    const args = [...resolved.args, '-x', '--audio-format', audioFormat, '-o', '-', '--no-warnings', '--no-playlist', url];
+    const child = spawn(resolved.command, args);
     return {
       stream: child.stdout,
       process: child,
-    };
-  }
-
-  private static getMockMetadata(url: string): YtDlpDumpJsonOutput {
-    return {
-      title: 'MediaHub Demo Video - High Performance Stream',
-      uploader: 'MediaHub Content Engine',
-      duration: 215,
-      thumbnail: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop',
-      view_count: 142850,
-      upload_date: '20260101',
-      description: 'Simulated high-quality stream metadata generated by MediaHub Universal Engine.',
-      formats: [
-        { format_id: '22', ext: 'mp4', resolution: '720p', format_note: '720p HD', filesize: 45000000, height: 720, width: 1280, vcodec: 'h264', acodec: 'aac' },
-        { format_id: '137', ext: 'mp4', resolution: '1080p', format_note: '1080p Full HD', filesize: 120000000, height: 1080, width: 1920, vcodec: 'h264', acodec: 'none' },
-        { format_id: '140', ext: 'm4a', resolution: 'audio only', format_note: '128k Audio', filesize: 5000000, vcodec: 'none', acodec: 'aac' },
-      ],
-      subtitles: {
-        en: [{ ext: 'vtt', url: 'https://example.com/sub_en.vtt', name: 'English' }],
-      },
     };
   }
 }
