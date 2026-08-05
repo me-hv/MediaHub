@@ -51,7 +51,7 @@ export class MediaController {
       });
     } catch (err: any) {
       logger.error({ error: err.message, code: err.code, requestId }, 'Error analyzing media');
-      const isRateLimit = err.code === 'INSTAGRAM_RATE_LIMIT' || err.code === 'RATE_LIMIT_EXCEEDED';
+      const isRateLimit = err.code === 'YOUTUBE_RATE_LIMIT' || err.code === 'INSTAGRAM_RATE_LIMIT' || err.code === 'RATE_LIMIT_EXCEEDED';
       const statusCode = isRateLimit ? 429 : 500;
 
       return c.json(

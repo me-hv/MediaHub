@@ -1,6 +1,6 @@
 import React from 'react';
 import { PlatformType } from '@mediahub/types';
-import { Youtube, Instagram, Twitter, Video, Share2, Globe } from 'lucide-react';
+import { Youtube, Music, Instagram, Twitter, Video, Share2, Globe } from 'lucide-react';
 
 interface PlatformBadgeProps {
   platform: PlatformType;
@@ -9,6 +9,7 @@ interface PlatformBadgeProps {
 export function PlatformBadge({ platform }: PlatformBadgeProps) {
   const configs: Record<PlatformType, { label: string; icon: React.ReactNode; bg: string; text: string; border: string }> = {
     YOUTUBE: { label: 'YouTube', icon: <Youtube className="w-3.5 h-3.5" />, bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/20' },
+    YOUTUBE_MUSIC: { label: 'YouTube Music', icon: <Music className="w-3.5 h-3.5" />, bg: 'bg-rose-500/10', text: 'text-rose-400', border: 'border-rose-500/20' },
     INSTAGRAM: { label: 'Instagram', icon: <Instagram className="w-3.5 h-3.5" />, bg: 'bg-pink-500/10', text: 'text-pink-400', border: 'border-pink-500/20' },
     X: { label: 'X (Twitter)', icon: <Twitter className="w-3.5 h-3.5" />, bg: 'bg-slate-500/10', text: 'text-slate-300', border: 'border-slate-500/20' },
     REDDIT: { label: 'Reddit', icon: <Share2 className="w-3.5 h-3.5" />, bg: 'bg-orange-500/10', text: 'text-orange-400', border: 'border-orange-500/20' },

@@ -12,6 +12,9 @@ export function detectPlatform(url: string): PlatformType {
     const parsed = new URL(cleanUrl);
     const hostname = parsed.hostname.toLowerCase();
 
+    if (hostname.includes('music.youtube.com')) {
+      return 'YOUTUBE_MUSIC';
+    }
     if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) {
       return 'YOUTUBE';
     }

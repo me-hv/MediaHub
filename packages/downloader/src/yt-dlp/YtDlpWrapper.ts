@@ -9,6 +9,7 @@ import { ExecutableResolver } from './ExecutableResolver';
 const execFileAsync = promisify(execFile);
 
 export type DownloaderErrorCode =
+  | 'YOUTUBE_RATE_LIMIT'
   | 'INSTAGRAM_RATE_LIMIT'
   | 'RATE_LIMIT_EXCEEDED'
   | 'LOGIN_REQUIRED'
@@ -28,6 +29,18 @@ export class DownloaderError extends Error {
     this.code = code;
     this.retryAfter = retryAfter;
   }
+}
+
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 Edg/125.0.0.0',
+];
+
+function getRandomUserAgent(): string {
+  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
 }
 
 export interface YtDlpDumpJsonOutput {
@@ -98,9 +111,11 @@ function calculateEstimatedFilesize(duration?: number, tbr?: number, vbr?: numbe
 }
 
 function resolveCookiePath(): string | undefined {
-  if (process.env.USE_INSTAGRAM_COOKIES === 'false') return undefined;
+  if (process.env.USE_YOUTUBE_COOKIES === 'false' && process.env.USE_INSTAGRAM_COOKIES === 'false') return undefined;
 
   const cookieCandidates = [
+    process.env.MEDIAHUB_YOUTUBE_COOKIES,
+    process.env.YOUTUBE_COOKIES_PATH,
     process.env.MEDIAHUB_INSTAGRAM_COOKIES,
     process.env.INSTAGRAM_COOKIES_PATH,
     process.env.MEDIAHUB_COOKIES_PATH,
@@ -117,8 +132,17 @@ function resolveCookiePath(): string | undefined {
 
 function classifyError(url: string, rawError: string): DownloaderError {
   const err = (rawError || '').toLowerCase();
+  const isYouTube = url.includes('youtube.com') || url.includes('youtu.be') || url.includes('music.youtube.com');
   const isInstagram = url.includes('instagram.com') || url.includes('instagr.am');
   const isReddit = url.includes('reddit.com') || url.includes('redd.it');
+
+  if (isYouTube && (err.includes('too many requests') || err.includes('429') || err.includes('confirm you’re not a robot') || err.includes('sign in to confirm'))) {
+    return new DownloaderError(
+      'YOUTUBE_RATE_LIMIT',
+      'YouTube is temporarily limiting requests. MediaHub will automatically retry. If the issue persists, connect a browser session using cookies for authenticated extraction.',
+      60
+    );
+  }
 
   if (isInstagram && (err.includes('too many requests') || err.includes('429') || err.includes('rate limit'))) {
     return new DownloaderError(
@@ -182,14 +206,11 @@ export class YtDlpWrapper {
     const platform = detectPlatform(url);
     const cookiePath = resolveCookiePath();
 
-    const userAgent =
-      process.env.YTDLP_USER_AGENT ||
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
     const timeoutMs = parseInt(process.env.YTDLP_TIMEOUT || '30000', 10);
-    const maxRetries = parseInt(process.env.YTDLP_RETRIES || '3', 10);
+    const maxRetries = 3;
 
-    // Exponential backoff delay schedule (Attempt 1: 0s, Attempt 2: 2s, Attempt 3: 5s)
-    const backoffDelays = [0, 2000, 5000];
+    // Exponential backoff schedule: 0s -> 2s -> 5s -> 10s
+    const backoffDelays = [0, 2000, 5000, 10000];
 
     let lastError: any;
 
@@ -202,55 +223,13 @@ export class YtDlpWrapper {
         await new Promise((res) => setTimeout(res, delay));
       }
 
-      const extraArgs: string[] = [];
+      const userAgent = getRandomUserAgent();
+      const extraArgs: string[] = ['--user-agent', userAgent];
 
-      // Attempt 1: Standard extraction
-      if (attempt === 1) {
-        extraArgs.push(
-          '--user-agent',
-          userAgent,
-          '--referer',
-          'https://www.google.com/',
-          '--add-header',
-          'Accept-Language: en-US,en;q=0.9'
-        );
-      }
-      // Attempt 2: Platform-specific navigation headers
-      else if (attempt === 2) {
-        if (platform === 'REDDIT') {
-          extraArgs.push(
-            '--user-agent',
-            userAgent,
-            '--referer',
-            'https://www.reddit.com/',
-            '--add-header',
-            'Sec-Fetch-Mode: navigate',
-            '--add-header',
-            'Sec-Fetch-Site: none'
-          );
-        } else if (platform === 'INSTAGRAM') {
-          extraArgs.push(
-            '--user-agent',
-            userAgent,
-            '--referer',
-            'https://www.instagram.com/',
-            '--add-header',
-            'Sec-Fetch-Site: same-origin',
-            '--add-header',
-            'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-          );
-        } else {
-          extraArgs.push('--user-agent', userAgent, '--referer', 'https://www.google.com/');
-        }
-      }
-      // Attempt 3: Cookie authenticated extraction (if file exists)
-      else if (attempt >= 3) {
-        extraArgs.push('--user-agent', userAgent);
-        if (cookiePath) {
-          extraArgs.push('--cookies', cookiePath);
-        } else {
-          extraArgs.push('--referer', 'https://www.google.com/');
-        }
+      if (cookiePath) {
+        extraArgs.push('--cookies', cookiePath);
+      } else {
+        extraArgs.push('--referer', 'https://www.google.com/', '--add-header', 'Accept-Language: en-US,en;q=0.9');
       }
 
       const args = [...resolved.args, ...extraArgs, '--dump-json', '--no-warnings', '--no-playlist', url];
@@ -307,14 +286,16 @@ export class YtDlpWrapper {
     }
 
     const url = normalizeMediaUrl(playlistUrl);
-    const userAgent =
-      process.env.YTDLP_USER_AGENT ||
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+    const userAgent = getRandomUserAgent();
+    const cookiePath = resolveCookiePath();
+
+    const extraArgs = ['--user-agent', userAgent];
+    if (cookiePath) extraArgs.push('--cookies', cookiePath);
 
     try {
       const { stdout } = await execFileAsync(
         resolved.command,
-        [...resolved.args, '--user-agent', userAgent, '--flat-playlist', '--dump-single-json', '--no-warnings', url],
+        [...resolved.args, ...extraArgs, '--flat-playlist', '--dump-single-json', '--no-warnings', url],
         { maxBuffer: 30 * 1024 * 1024 }
       );
       const json = JSON.parse(stdout) as YtDlpDumpJsonOutput;
@@ -322,7 +303,7 @@ export class YtDlpWrapper {
 
       const items = entries.map((entry, index) => ({
         id: entry.id,
-        title: entry.title || `Video ${index + 1}`,
+        title: entry.title || `Track ${index + 1}`,
         rawUrl: entry.url || `https://www.youtube.com/watch?v=${entry.id}`,
         duration: entry.duration,
         position: index + 1,
@@ -330,7 +311,7 @@ export class YtDlpWrapper {
 
       return {
         rawUrl: url,
-        title: json.title || 'Playlist',
+        title: json.title || 'Album / Playlist',
         videoCount: items.length,
         items,
       };
@@ -429,9 +410,7 @@ export class YtDlpWrapper {
     }
 
     const url = normalizeMediaUrl(rawUrl);
-    const userAgent =
-      process.env.YTDLP_USER_AGENT ||
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+    const userAgent = getRandomUserAgent();
     const cookiePath = resolveCookiePath();
 
     const extraArgs = ['--user-agent', userAgent, '--referer', 'https://www.google.com/'];
@@ -452,9 +431,7 @@ export class YtDlpWrapper {
     }
 
     const url = normalizeMediaUrl(rawUrl);
-    const userAgent =
-      process.env.YTDLP_USER_AGENT ||
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+    const userAgent = getRandomUserAgent();
     const cookiePath = resolveCookiePath();
 
     const extraArgs = ['--user-agent', userAgent, '--referer', 'https://www.google.com/'];

@@ -1,5 +1,6 @@
 export type PlatformType =
   | 'YOUTUBE'
+  | 'YOUTUBE_MUSIC'
   | 'INSTAGRAM'
   | 'X'
   | 'REDDIT'

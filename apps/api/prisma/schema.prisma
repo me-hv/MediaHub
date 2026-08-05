@@ -34,6 +34,7 @@ enum MediaType {
 
 enum PlatformType {
   YOUTUBE
+  YOUTUBE_MUSIC
   INSTAGRAM
   X
   REDDIT
@@ -119,16 +120,16 @@ enum InvitationStatus {
 }
 
 model User {
-  id          String         @id // Firebase UID
-  email       String         @unique
+  id          String            @id // Firebase UID
+  email       String            @unique
   displayName String?
   photoURL    String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 
   settings    UserSettings?
   memberships Membership[]
-  invitations Invitation[]   @relation("InvitedUser")
+  invitations Invitation[]      @relation("InvitedUser")
   history     DownloadHistory[]
   favorites   Favorite[]
   jobs        QueueJob[]
@@ -275,40 +276,39 @@ model ServiceAccount {
 }
 
 model UsageCounter {
-  id                 String       @id @default(uuid())
-  organizationId     String
-  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  month              String       // e.g. "2026-08"
-  downloads          Int          @default(0)
-  apiRequests        Int          @default(0)
-  storageBytes       BigInt       @default(0)
-  bandwidthBytes     BigInt       @default(0)
-  queueJobs          Int          @default(0)
-  playlistAnalyses   Int          @default(0)
-  audioExtractions   Int          @default(0)
-  subtitleDownloads  Int          @default(0)
-  cacheHits          Int          @default(0)
-  cacheMisses        Int          @default(0)
-  updatedAt          DateTime     @updatedAt
+  id                String       @id @default(uuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  month             String       // e.g. "2026-08"
+  downloads         Int          @default(0)
+  apiRequests       Int          @default(0)
+  storageBytes      BigInt       @default(0)
+  bandwidthBytes    BigInt       @default(0)
+  queueJobs         Int          @default(0)
+  playlistAnalyses  Int          @default(0)
+  audioExtractions  Int          @default(0)
+  subtitleDownloads Int          @default(0)
+  cacheHits         Int          @default(0)
+  cacheMisses       Int          @default(0)
+  updatedAt         DateTime     @updatedAt
 
   @@unique([organizationId, month])
   @@index([organizationId])
 }
 
 model AuditLog {
-  id             String        @id @default(uuid())
+  id             String       @id @default(uuid())
   organizationId String
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   actorId        String
-  actor          User          @relation(fields: [actorId], references: [id])
+  actor          User         @relation(fields: [actorId], references: [id])
   projectId      String?
-  action         String        // "MEMBER_INVITED", "KEY_CREATED", "BILLING_UPDATED"
-  resourceType   String        // "ApiKey", "Webhook", "Subscription"
+  action         String       // "MEMBER_INVITED", "KEY_CREATED", "BILLING_UPDATED"
+  resourceType   String       // "ApiKey", "Webhook", "Subscription"
   resourceId     String?
   ip             String?
   userAgent      String?
-  metadata       Json?
-  createdAt      DateTime      @default(now())
+  createdAt      DateTime     @default(now())
 
   @@index([organizationId])
   @@index([actorId])
@@ -357,16 +357,16 @@ model Favorite {
 }
 
 model Playlist {
-  id            String         @id @default(uuid())
+  id            String   @id @default(uuid())
   userId        String?
-  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   rawUrl        String
   title         String
   videoCount    Int
   estimatedSize BigInt?
-  createdAt     DateTime       @default(now())
+  createdAt     DateTime @default(now())
 
-  items         PlaylistItem[]
+  items PlaylistItem[]
 
   @@index([userId])
 }
@@ -458,20 +458,20 @@ model ApiKey {
 }
 
 model WebhookConfig {
-  id           String         @id @default(uuid())
+  id           String        @id @default(uuid())
   userId       String?
-  user         User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
   projectId    String?
-  project      Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project      Project?      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   url          String
-  secretPrefix String         // e.g. "whsec_a1b2"
-  secretHash   String         // SHA-256 hash of webhook signing secret
-  events       String[]       // ["download.completed", "download.failed", ...]
-  status       WebhookStatus  @default(ACTIVE)
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  secretPrefix String        // e.g. "whsec_a1b2"
+  secretHash   String        // SHA-256 hash of webhook signing secret
+  events       String[]      // ["download.completed", "download.failed", ...]
+  status       WebhookStatus @default(ACTIVE)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 
-  deliveries   WebhookDelivery[]
+  deliveries WebhookDelivery[]
 
   @@index([userId])
   @@index([projectId])
@@ -495,20 +495,20 @@ model WebhookDelivery {
 }
 
 model ApiRequestLog {
-  id             String    @id @default(uuid())
-  requestId      String    // Correlated request ID
+  id             String   @id @default(uuid())
+  requestId      String   // Correlated request ID
   apiKeyId       String?
-  apiKey         ApiKey?   @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+  apiKey         ApiKey?  @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
   organizationId String?
   projectId      String?
   endpoint       String
   method         String
   statusCode     Int
   durationMs     Int
-  bytesSent      BigInt    @default(0)
+  bytesSent      BigInt   @default(0)
   ipAddress      String?
   userAgent      String?
-  createdAt      DateTime  @default(now())
+  createdAt      DateTime @default(now())
 
   @@index([apiKeyId])
   @@index([organizationId])
