@@ -4,6 +4,12 @@ import { env } from '@mediahub/config';
 import { logger } from './utils/logger';
 import { globalShutdownManager } from '@mediahub/platform';
 import { prisma } from './config/prisma';
+import { ExecutableValidator } from '@mediahub/downloader';
+
+// Run binary dependency validation on startup
+ExecutableValidator.validateStartup().catch((err) => {
+  logger.warn({ error: err.message }, 'Executable validation warning');
+});
 
 const server = serve({
   fetch: app.fetch,

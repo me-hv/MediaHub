@@ -91,7 +91,7 @@ export class MediaController {
     const platform = detectPlatform(validation.url);
 
     try {
-      const { stream, process: childProcess } = YtDlpWrapper.createAudioExtractStream(validation.url, format);
+      const { stream, process: childProcess } = await YtDlpWrapper.createAudioExtractStream(validation.url, format);
 
       await HistoryService.addHistory({
         userId: user?.id,
@@ -106,9 +106,9 @@ export class MediaController {
 
       const webStream = new ReadableStream({
         start(controller) {
-          stream.on('data', (chunk) => controller.enqueue(chunk));
+          stream.on('data', (chunk: Buffer) => controller.enqueue(chunk));
           stream.on('end', () => controller.close());
-          stream.on('error', (err) => {
+          stream.on('error', (err: Error) => {
             if (!childProcess.killed) childProcess.kill('SIGTERM');
             controller.error(err);
           });
@@ -164,9 +164,9 @@ export class MediaController {
 
       const webStream = new ReadableStream({
         start(controller) {
-          stream.on('data', (chunk) => controller.enqueue(chunk));
+          stream.on('data', (chunk: Buffer) => controller.enqueue(chunk));
           stream.on('end', () => controller.close());
-          stream.on('error', (err) => {
+          stream.on('error', (err: Error) => {
             if (!childProcess.killed) childProcess.kill('SIGTERM');
             controller.error(err);
           });

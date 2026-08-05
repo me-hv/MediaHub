@@ -5,3 +5,5 @@ export * from './providers/InstagramProvider';
 export * from './providers/RedditProvider';
 export * from './providers/GenericYtDlpProvider';
 export * from './yt-dlp/YtDlpWrapper';
+export * from './yt-dlp/ExecutableResolver';
+export * from './yt-dlp/ExecutableValidator';

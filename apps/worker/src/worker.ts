@@ -3,10 +3,15 @@ import { WebhookWorker } from './workers/webhook.worker';
 import { AnalyticsWorker } from './workers/analytics.worker';
 import { CleanupWorker } from './workers/cleanup.worker';
 import { globalShutdownManager } from '@mediahub/platform';
+import { ExecutableValidator } from '@mediahub/downloader';
 
 export class BackgroundWorkerDaemon {
-  static start() {
+  static async start() {
     console.log('[MediaHub Worker Daemon] Initializing background processors...');
+
+    await ExecutableValidator.validateStartup().catch((err) => {
+      console.warn(`[Worker Daemon] Executable validation warning: ${err.message}`);
+    });
 
     DownloadWorker.start();
     WebhookWorker.start();
