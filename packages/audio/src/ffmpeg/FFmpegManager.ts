@@ -1,7 +1,7 @@
 import { execFile, spawn, ChildProcess } from 'node:child_process';
 import { Readable } from 'node:stream';
 import { promisify } from 'node:util';
-import { AudioTranscodeOptions, AudioFormat } from '../types';
+import { AudioTranscodeOptions } from '../types';
 
 const execFileAsync = promisify(execFile);
 
@@ -87,7 +87,19 @@ export class FFmpegManager {
     const args = this.buildFFmpegArgs(options, sourceCodec);
 
     const child = spawn(binary, args, { stdio: ['pipe', 'pipe', 'pipe'] });
-    inputStream.pipe(child.stdin);
+
+    child.on('error', (err) => {
+      console.warn(`[FFmpegManager Warning] Process error spawning '${binary}': ${err.message}`);
+    });
+
+    inputStream.on('error', (err) => {
+      console.warn(`[FFmpegManager Warning] Input stream error: ${err.message}`);
+      if (!child.killed) child.kill('SIGTERM');
+    });
+
+    inputStream.pipe(child.stdin).on('error', () => {
+      // Ignore broken pipe errors if child terminates early
+    });
 
     return {
       stream: child.stdout,

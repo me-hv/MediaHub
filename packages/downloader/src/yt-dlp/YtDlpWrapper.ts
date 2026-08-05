@@ -457,7 +457,7 @@ export class YtDlpWrapper {
     };
   }
 
-  static async createAudioExtractStream(rawUrl: string, audioFormat: 'mp3' | 'm4a' | 'aac' | 'flac' | 'wav' | 'ogg'): Promise<StreamResult> {
+  static async createAudioExtractStream(rawUrl: string, audioFormat?: string): Promise<StreamResult> {
     const resolved = await ExecutableResolver.resolveYtDlp();
     if (!resolved.available) {
       throw new DownloaderError('YT_DLP_FAILED', `yt-dlp executable could not be found for audio extraction.`);
@@ -470,9 +470,8 @@ export class YtDlpWrapper {
     const extraArgs = ['--user-agent', userAgent, '--referer', 'https://www.google.com/'];
     if (cookiePath) extraArgs.push('--cookies', cookiePath);
 
-    const targetFmt = ['mp3', 'm4a', 'aac', 'flac', 'wav', 'ogg'].includes(audioFormat) ? audioFormat : 'mp3';
-
-    const args = [...resolved.args, ...extraArgs, '-x', '--audio-format', targetFmt, '-o', '-', '--no-warnings', '--no-playlist', url];
+    // Stream raw bestaudio container directly to stdout
+    const args = [...resolved.args, ...extraArgs, '-f', 'bestaudio/best', '-o', '-', '--no-warnings', '--no-playlist', url];
     const child = spawn(resolved.command, args);
     return {
       stream: child.stdout,
