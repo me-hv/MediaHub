@@ -1,0 +1,29 @@
+# Multi-stage Dockerfile for Background Worker Daemon (includes Python yt-dlp + FFmpeg)
+FROM node:22-alpine AS base
+RUN apk add --no-cache ffmpeg python3 py3-pip wget && \
+    wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp && \
+    chmod a+rx /usr/local/bin/yt-dlp
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/worker/package.json ./apps/worker/
+COPY packages/ ./packages/
+RUN corepack enable && pnpm install --frozen-lockfile
+
+FROM base AS builder
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN corepack enable && pnpm --filter @mediahub/worker build
+
+FROM base AS runner
+ENV NODE_ENV production
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 workeruser
+
+COPY --from=builder /app/apps/worker/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+
+USER workeruser
+
+CMD ["node", "dist/worker.js"]

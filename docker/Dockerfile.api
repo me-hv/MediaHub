@@ -1,0 +1,29 @@
+# Multi-stage Dockerfile for Hono REST API Gateway
+FROM node:22-alpine AS base
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json ./apps/api/
+COPY packages/ ./packages/
+RUN corepack enable && pnpm install --frozen-lockfile
+
+FROM base AS builder
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN corepack enable && pnpm --filter @mediahub/api build
+
+FROM base AS runner
+ENV NODE_ENV production
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 mediahub
+
+COPY --from=builder /app/apps/api/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+
+USER mediahub
+
+EXPOSE 4000
+ENV PORT 4000
+
+CMD ["node", "dist/server.js"]
