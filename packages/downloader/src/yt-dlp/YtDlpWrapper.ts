@@ -8,6 +8,28 @@ import { ExecutableResolver } from './ExecutableResolver';
 
 const execFileAsync = promisify(execFile);
 
+export type DownloaderErrorCode =
+  | 'INSTAGRAM_RATE_LIMIT'
+  | 'RATE_LIMIT_EXCEEDED'
+  | 'LOGIN_REQUIRED'
+  | 'PRIVATE_POST'
+  | 'POST_NOT_FOUND'
+  | 'INVALID_URL'
+  | 'NETWORK_ERROR'
+  | 'YT_DLP_FAILED';
+
+export class DownloaderError extends Error {
+  readonly code: DownloaderErrorCode;
+  readonly retryAfter?: number;
+
+  constructor(code: DownloaderErrorCode, message: string, retryAfter?: number) {
+    super(message);
+    this.name = 'DownloaderError';
+    this.code = code;
+    this.retryAfter = retryAfter;
+  }
+}
+
 export interface YtDlpDumpJsonOutput {
   title?: string;
   uploader?: string;
@@ -76,10 +98,13 @@ function calculateEstimatedFilesize(duration?: number, tbr?: number, vbr?: numbe
 }
 
 function resolveCookiePath(): string | undefined {
+  if (process.env.USE_INSTAGRAM_COOKIES === 'false') return undefined;
+
   const cookieCandidates = [
     process.env.MEDIAHUB_INSTAGRAM_COOKIES,
     process.env.INSTAGRAM_COOKIES_PATH,
     process.env.MEDIAHUB_COOKIES_PATH,
+    './cookies.txt',
   ].filter(Boolean) as string[];
 
   for (const candidate of cookieCandidates) {
@@ -90,34 +115,51 @@ function resolveCookiePath(): string | undefined {
   return undefined;
 }
 
-function translateError(url: string, rawError: string): Error {
-  const err = rawError || '';
+function classifyError(url: string, rawError: string): DownloaderError {
+  const err = (rawError || '').toLowerCase();
   const isInstagram = url.includes('instagram.com') || url.includes('instagr.am');
   const isReddit = url.includes('reddit.com') || url.includes('redd.it');
 
-  if (isInstagram && (err.includes('empty media response') || err.includes('login') || err.includes('Redirecting to login'))) {
-    return new Error('This Instagram media requires authentication or is private.');
-  }
-  if (isReddit && (err.includes('403') || err.includes('Forbidden'))) {
-    return new Error('Reddit denied anonymous access. Content may require authentication or updated headers.');
-  }
-  if (err.includes('Private video') || err.includes('private media') || err.includes('login')) {
-    return new Error('This media is private or restricted.');
-  }
-  if (err.includes('404') || err.includes('Not Found') || err.includes('Video unavailable') || err.includes('Post not found')) {
-    return new Error('Media not found at this URL. Content may have been removed or deleted.');
-  }
-  if (err.includes('GeoRestricted') || err.includes('not available in your country') || err.includes('region')) {
-    return new Error('This media is unavailable in your region.');
-  }
-  if (err.includes('Unsupported URL') || err.includes('no suitable extractor')) {
-    return new Error(`This URL is not currently supported: ${url}`);
-  }
-  if (err.includes('ETIMEDOUT') || err.includes('ECONNREFUSED') || err.includes('Unable to download webpage')) {
-    return new Error('Unable to reach the media provider. Please check the link or network status.');
+  if (isInstagram && (err.includes('too many requests') || err.includes('429') || err.includes('rate limit'))) {
+    return new DownloaderError(
+      'INSTAGRAM_RATE_LIMIT',
+      'Instagram is temporarily limiting anonymous requests. Please wait one minute and try again or configure authentication cookies.',
+      60
+    );
   }
 
-  return new Error(`Failed to extract metadata for URL '${url}'. Please verify the link is public and accessible.`);
+  if (isInstagram && (err.includes('empty media response') || err.includes('login') || err.includes('redirecting to login'))) {
+    return new DownloaderError(
+      'LOGIN_REQUIRED',
+      'This Instagram post or reel requires login to view. Please try another link or configure cookies in settings.'
+    );
+  }
+
+  if (isReddit && (err.includes('403') || err.includes('forbidden'))) {
+    return new DownloaderError(
+      'RATE_LIMIT_EXCEEDED',
+      'Reddit denied anonymous access. Content may require authentication or updated headers.',
+      60
+    );
+  }
+
+  if (err.includes('private video') || err.includes('private media') || err.includes('login required')) {
+    return new DownloaderError('PRIVATE_POST', 'This media is private or restricted.');
+  }
+
+  if (err.includes('404') || err.includes('not found') || err.includes('video unavailable') || err.includes('post not found')) {
+    return new DownloaderError('POST_NOT_FOUND', 'Media not found at this URL. Content may have been removed or deleted.');
+  }
+
+  if (err.includes('unsupported url') || err.includes('no suitable extractor')) {
+    return new DownloaderError('INVALID_URL', `This URL is not currently supported: ${url}`);
+  }
+
+  if (err.includes('etimedout') || err.includes('econnrefused') || err.includes('unable to download webpage')) {
+    return new DownloaderError('NETWORK_ERROR', 'Unable to reach the media provider. Please check network status.');
+  }
+
+  return new DownloaderError('YT_DLP_FAILED', 'Failed to extract metadata for URL. Please verify the media is public.');
 }
 
 export class YtDlpWrapper {
@@ -130,8 +172,9 @@ export class YtDlpWrapper {
     const resolved = await ExecutableResolver.resolveYtDlp();
 
     if (!resolved.available) {
-      throw new Error(
-        `yt-dlp executable could not be found on the host system. Please install yt-dlp, python -m yt_dlp, or set YT_DLP_PATH. See docs/development.md`
+      throw new DownloaderError(
+        'YT_DLP_FAILED',
+        `yt-dlp executable could not be found on host. Please install yt-dlp, python -m yt_dlp, or set YT_DLP_PATH.`
       );
     }
 
@@ -145,12 +188,23 @@ export class YtDlpWrapper {
     const timeoutMs = parseInt(process.env.YTDLP_TIMEOUT || '30000', 10);
     const maxRetries = parseInt(process.env.YTDLP_RETRIES || '3', 10);
 
+    // Exponential backoff delay schedule (Attempt 1: 0s, Attempt 2: 2s, Attempt 3: 5s)
+    const backoffDelays = [0, 2000, 5000];
+
     let lastError: any;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      if (attempt > 1) {
+        const delay = backoffDelays[attempt - 1] || 5000;
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`[YtDlp Backoff] Waiting ${delay}ms before attempt ${attempt}/${maxRetries} for ${url}`);
+        }
+        await new Promise((res) => setTimeout(res, delay));
+      }
+
       const extraArgs: string[] = [];
 
-      // Attempt 1: Standard extraction with Chrome User-Agent
+      // Attempt 1: Standard extraction
       if (attempt === 1) {
         extraArgs.push(
           '--user-agent',
@@ -161,7 +215,7 @@ export class YtDlpWrapper {
           'Accept-Language: en-US,en;q=0.9'
         );
       }
-      // Attempt 2: Platform-specific referer and navigation headers
+      // Attempt 2: Platform-specific navigation headers
       else if (attempt === 2) {
         if (platform === 'REDDIT') {
           extraArgs.push(
@@ -189,7 +243,7 @@ export class YtDlpWrapper {
           extraArgs.push('--user-agent', userAgent, '--referer', 'https://www.google.com/');
         }
       }
-      // Attempt 3: Authenticated cookie extraction (if cookie file available)
+      // Attempt 3: Cookie authenticated extraction (if file exists)
       else if (attempt >= 3) {
         extraArgs.push('--user-agent', userAgent);
         if (cookiePath) {
@@ -233,26 +287,23 @@ export class YtDlpWrapper {
         }
 
         if (err.code === 'ENOENT') {
-          throw new Error(
+          throw new DownloaderError(
+            'YT_DLP_FAILED',
             `yt-dlp executable could not be executed at '${resolved.displayPath}'. Please verify installation or set YT_DLP_PATH.`
           );
-        }
-
-        if (attempt < maxRetries) {
-          await new Promise((res) => setTimeout(res, 800 * attempt));
         }
       }
     }
 
     const rawErrorMsg = lastError?.stderr || lastError?.message || 'yt-dlp extraction error';
-    throw translateError(url, rawErrorMsg);
+    throw classifyError(url, rawErrorMsg);
   }
 
   static async parsePlaylist(playlistUrl: string): Promise<PlaylistMetadata> {
     const resolved = await ExecutableResolver.resolveYtDlp();
 
     if (!resolved.available) {
-      throw new Error(`yt-dlp executable could not be found on the host system. See docs/development.md`);
+      throw new DownloaderError('YT_DLP_FAILED', `yt-dlp executable could not be found on the host system.`);
     }
 
     const url = normalizeMediaUrl(playlistUrl);
@@ -284,7 +335,7 @@ export class YtDlpWrapper {
         items,
       };
     } catch (err: any) {
-      throw translateError(url, err.stderr || err.message);
+      throw classifyError(url, err.stderr || err.message);
     }
   }
 
@@ -374,7 +425,7 @@ export class YtDlpWrapper {
   static async createStream(rawUrl: string, formatId: string): Promise<StreamResult> {
     const resolved = await ExecutableResolver.resolveYtDlp();
     if (!resolved.available) {
-      throw new Error(`yt-dlp executable could not be found for streaming.`);
+      throw new DownloaderError('YT_DLP_FAILED', `yt-dlp executable could not be found for streaming.`);
     }
 
     const url = normalizeMediaUrl(rawUrl);
@@ -397,7 +448,7 @@ export class YtDlpWrapper {
   static async createAudioExtractStream(rawUrl: string, audioFormat: 'mp3' | 'm4a' | 'aac'): Promise<StreamResult> {
     const resolved = await ExecutableResolver.resolveYtDlp();
     if (!resolved.available) {
-      throw new Error(`yt-dlp executable could not be found for audio extraction.`);
+      throw new DownloaderError('YT_DLP_FAILED', `yt-dlp executable could not be found for audio extraction.`);
     }
 
     const url = normalizeMediaUrl(rawUrl);

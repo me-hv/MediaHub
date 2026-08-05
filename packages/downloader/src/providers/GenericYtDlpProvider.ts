@@ -1,7 +1,7 @@
-import { IDownloaderProvider } from '../interfaces/IDownloaderProvider';
+import { IDownloaderProvider, ProviderResult } from '../interfaces/IDownloaderProvider';
 import { MediaMetadata } from '@mediahub/types';
 import { detectPlatform, normalizeMediaUrl } from '@mediahub/utils';
-import { YtDlpWrapper, StreamResult } from '../yt-dlp/YtDlpWrapper';
+import { YtDlpWrapper, StreamResult, DownloaderError } from '../yt-dlp/YtDlpWrapper';
 
 function calculateAspectRatio(w?: number, h?: number): string | undefined {
   if (!w || !h || w <= 0 || h <= 0) return undefined;
@@ -53,6 +53,21 @@ export class GenericYtDlpProvider implements IDownloaderProvider {
       platform,
       qualities,
     };
+  }
+
+  async extractMetadataResult(url: string, urlHash: string): Promise<ProviderResult> {
+    try {
+      const metadata = await this.extractMetadata(url, urlHash);
+      return { success: true, metadata };
+    } catch (err: any) {
+      if (err instanceof DownloaderError) {
+        return { success: false, error: err };
+      }
+      return {
+        success: false,
+        error: new DownloaderError('YT_DLP_FAILED', err.message || 'Failed to extract metadata'),
+      };
+    }
   }
 
   async getStream(url: string, formatId: string): Promise<StreamResult> {

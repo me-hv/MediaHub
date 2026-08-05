@@ -50,16 +50,20 @@ export class MediaController {
         requestId,
       });
     } catch (err: any) {
-      logger.error({ error: err.message, requestId }, 'Error analyzing media');
+      logger.error({ error: err.message, code: err.code, requestId }, 'Error analyzing media');
+      const isRateLimit = err.code === 'INSTAGRAM_RATE_LIMIT' || err.code === 'RATE_LIMIT_EXCEEDED';
+      const statusCode = isRateLimit ? 429 : 500;
+
       return c.json(
         {
           success: false,
-          code: 'ANALYSIS_FAILED',
+          code: err.code || 'ANALYSIS_FAILED',
           message: err.message || 'Unable to extract media metadata.',
+          retryAfter: err.retryAfter || (isRateLimit ? 60 : undefined),
           timestamp: new Date().toISOString(),
           requestId,
         },
-        500
+        statusCode
       );
     }
   }

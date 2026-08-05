@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useAnalyzeMedia } from '../hooks/useAnalyzeMedia';
 import { UrlInputForm } from '../components/media/UrlInputForm';
 import { SkeletonCard } from '../components/media/SkeletonCard';
@@ -10,10 +10,18 @@ import { FeaturesGrid } from '../components/media/FeaturesGrid';
 
 export default function HomePage() {
   const analyzeMutation = useAnalyzeMedia();
+  const [currentUrl, setCurrentUrl] = useState<string>('');
 
   const handleAnalyze = (url: string) => {
+    setCurrentUrl(url);
     analyzeMutation.mutate({ url });
   };
+
+  const isRateLimit =
+    analyzeMutation.isError &&
+    (analyzeMutation.error.message.includes('Instagram') ||
+      analyzeMutation.error.message.includes('rate limit') ||
+      analyzeMutation.error.message.includes('limiting'));
 
   return (
     <div className="relative z-10 px-4 py-12 sm:py-20 max-w-6xl mx-auto space-y-12">
@@ -41,7 +49,11 @@ export default function HomePage() {
         {analyzeMutation.isPending && <SkeletonCard />}
 
         {analyzeMutation.isError && (
-          <ErrorMessage message={analyzeMutation.error.message || 'Failed to analyze media link.'} />
+          <ErrorMessage
+            message={analyzeMutation.error.message || 'Failed to analyze media link.'}
+            onRetry={currentUrl ? () => handleAnalyze(currentUrl) : undefined}
+            isRateLimit={isRateLimit}
+          />
         )}
 
         {analyzeMutation.isSuccess && analyzeMutation.data && (
