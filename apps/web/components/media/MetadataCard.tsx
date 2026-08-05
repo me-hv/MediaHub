@@ -19,7 +19,7 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
   const { startDownload, cancelDownload, isDownloading, error: downloadError } = useDownloadMedia();
 
   const currentFormats: QualityOption[] = metadata.qualities[activeTab] || [];
-  const activeFormat = currentFormats.find((f) => f.formatId === selectedFormatId) || currentFormats[0];
+  const activeFormat: QualityOption | undefined = currentFormats.find((f) => f.formatId === selectedFormatId) || currentFormats[0];
 
   const handleDownload = () => {
     if (!activeFormat) return;
@@ -30,7 +30,8 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
     startDownload(metadata.url, activeFormat.formatId, filename);
   };
 
-  const getFormatSizeDisplay = (fmt: QualityOption): string => {
+  const getFormatSizeDisplay = (fmt?: QualityOption): string => {
+    if (!fmt) return 'Stream';
     const size = fmt.filesize || fmt.filesizeApprox;
     if (size && size > 0) return formatBytes(size);
     if (fmt.filesizeEstimated && fmt.filesizeEstimated > 0) {
