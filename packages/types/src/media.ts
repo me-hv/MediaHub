@@ -34,6 +34,7 @@ export interface QualityOption {
   acodec?: string;
   tbr?: number;
   hdr?: boolean;
+  requiresConversion?: boolean;
 }
 
 export interface CategorizedQualities {
@@ -61,6 +62,7 @@ export interface MediaMetadata {
   platform: PlatformType;
   qualities: CategorizedQualities;
   cachedAt?: string;
+  ffmpegAvailable?: boolean;
 }
 
 export interface PlaylistItemData {

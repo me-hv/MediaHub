@@ -1,6 +1,7 @@
 import { Context } from 'hono';
 import { sanitizeAndValidateUrl, detectPlatform } from '@mediahub/utils';
 import { ProviderFactory, YtDlpWrapper } from '@mediahub/downloader';
+import { FFmpegManager, AudioTranscodeOptions, AudioFormat } from '@mediahub/audio';
 import { MediaService } from '../services/media.service';
 import { HistoryService } from '../services/history.service';
 import { logger } from '../utils/logger';
@@ -147,11 +148,67 @@ export class MediaController {
     }
 
     const formatId = body?.formatId || 'best';
-    const provider = ProviderFactory.getProvider(validation.url);
     const platform = detectPlatform(validation.url);
     const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '127.0.0.1';
 
     try {
+      // 1. Handle Converted Audio Formats (conv-*)
+      if (formatId.startsWith('conv-')) {
+        let format: AudioFormat = 'mp3';
+        let bitrate = '320';
+
+        if (formatId.includes('flac')) {
+          format = 'flac';
+        } else if (formatId.includes('wav')) {
+          format = 'wav';
+        } else if (formatId.includes('aac')) {
+          format = 'm4a';
+          bitrate = formatId.split('-')[2] || '256';
+        } else if (formatId.includes('ogg')) {
+          format = 'ogg';
+        } else if (formatId.includes('mp3')) {
+          format = 'mp3';
+          bitrate = formatId.split('-')[2] || '320';
+        }
+
+        const { stream: ytStream, process: ytProc } = await YtDlpWrapper.createAudioExtractStream(validation.url, 'm4a');
+        const { stream: transStream, process: ffmpegProc } = FFmpegManager.createTranscodeProcess(ytStream, { format, bitrate });
+
+        const webStream = new ReadableStream({
+          start(controller) {
+            transStream.on('data', (chunk: Buffer) => controller.enqueue(chunk));
+            transStream.on('end', () => controller.close());
+            transStream.on('error', (err: Error) => {
+              if (!ytProc.killed) ytProc.kill('SIGTERM');
+              if (!ffmpegProc.killed) ffmpegProc.kill('SIGTERM');
+              controller.error(err);
+            });
+          },
+          cancel() {
+            if (!ytProc.killed) ytProc.kill('SIGTERM');
+            if (!ffmpegProc.killed) ffmpegProc.kill('SIGTERM');
+          },
+        });
+
+        const contentTypeMap: Record<string, string> = {
+          mp3: 'audio/mpeg',
+          flac: 'audio/flac',
+          wav: 'audio/wav',
+          m4a: 'audio/mp4',
+          ogg: 'audio/ogg',
+        };
+
+        const filename = `mediahub-audio-${validation.hash.slice(0, 8)}.${format}`;
+
+        c.header('Content-Type', contentTypeMap[format] || 'audio/mpeg');
+        c.header('Content-Disposition', `attachment; filename="${filename}"`);
+        c.header('Cache-Control', 'no-cache');
+
+        return c.body(webStream);
+      }
+
+      // 2. Handle Native Source Stream Downloads
+      const provider = ProviderFactory.getProvider(validation.url);
       const { stream, process: childProcess } = await provider.getStream(validation.url, formatId);
 
       await HistoryService.addHistory({

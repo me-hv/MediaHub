@@ -345,7 +345,7 @@ export class YtDlpWrapper {
     }
   }
 
-  static categorizeFormats(rawFormats: YtDlpDumpJsonOutput['formats'] = [], overallDuration?: number): CategorizedQualities {
+  static categorizeFormats(rawFormats: YtDlpDumpJsonOutput['formats'] = [], overallDuration = 180, ffmpegAvailable = true): CategorizedQualities {
     const video: QualityOption[] = [];
     const audio: QualityOption[] = [];
     const combined: QualityOption[] = [];
@@ -376,7 +376,7 @@ export class YtDlpWrapper {
         filesize,
         filesizeApprox,
         filesizeEstimated,
-        qualityLabel: fmt.format_note || resolution || (hasAudio && !hasVideo ? 'Audio Only' : 'Standard'),
+        qualityLabel: fmt.format_note || resolution || (hasAudio && !hasVideo ? 'Original Stream' : 'Standard'),
         hasVideo,
         hasAudio,
         category: hasVideo && hasAudio ? 'combined' : hasVideo ? 'video' : 'audio',
@@ -385,6 +385,7 @@ export class YtDlpWrapper {
         acodec: fmt.acodec,
         tbr: fmt.tbr,
         hdr: isHdr,
+        requiresConversion: false,
       };
 
       if (hasVideo && hasAudio) {
@@ -396,9 +397,41 @@ export class YtDlpWrapper {
       }
     }
 
+    // Append Converted Formats if FFmpeg is available
+    if (ffmpegAvailable) {
+      const convertedSpecs = [
+        { id: 'conv-mp3-320', ext: 'mp3', label: 'MP3 320 kbps', bitrate: 320, acodec: 'mp3' },
+        { id: 'conv-mp3-256', ext: 'mp3', label: 'MP3 256 kbps', bitrate: 256, acodec: 'mp3' },
+        { id: 'conv-mp3-192', ext: 'mp3', label: 'MP3 192 kbps', bitrate: 192, acodec: 'mp3' },
+        { id: 'conv-mp3-128', ext: 'mp3', label: 'MP3 128 kbps', bitrate: 128, acodec: 'mp3' },
+        { id: 'conv-flac-lossless', ext: 'flac', label: 'FLAC Lossless', bitrate: 800, acodec: 'flac' },
+        { id: 'conv-wav-pcm', ext: 'wav', label: 'WAV PCM 16-bit', bitrate: 1411, acodec: 'pcm' },
+        { id: 'conv-aac-256', ext: 'm4a', label: 'AAC 256 kbps', bitrate: 256, acodec: 'aac' },
+        { id: 'conv-aac-192', ext: 'm4a', label: 'AAC 192 kbps', bitrate: 192, acodec: 'aac' },
+        { id: 'conv-aac-128', ext: 'm4a', label: 'AAC 128 kbps', bitrate: 128, acodec: 'aac' },
+        { id: 'conv-ogg-vorbis', ext: 'ogg', label: 'OGG Vorbis', bitrate: 192, acodec: 'vorbis' },
+      ];
+
+      for (const spec of convertedSpecs) {
+        const estimatedSize = Math.round(((spec.bitrate * 1000) / 8) * (overallDuration || 180));
+        audio.push({
+          formatId: spec.id,
+          ext: spec.ext,
+          qualityLabel: spec.label,
+          hasVideo: false,
+          hasAudio: true,
+          category: 'audio',
+          acodec: spec.acodec,
+          tbr: spec.bitrate,
+          filesizeEstimated: estimatedSize,
+          requiresConversion: true,
+        });
+      }
+    }
+
     return {
       video: video.slice(-12),
-      audio: audio.slice(-8),
+      audio: audio,
       combined: combined.slice(-12),
     };
   }
@@ -424,7 +457,7 @@ export class YtDlpWrapper {
     };
   }
 
-  static async createAudioExtractStream(rawUrl: string, audioFormat: 'mp3' | 'm4a' | 'aac'): Promise<StreamResult> {
+  static async createAudioExtractStream(rawUrl: string, audioFormat: 'mp3' | 'm4a' | 'aac' | 'flac' | 'wav' | 'ogg'): Promise<StreamResult> {
     const resolved = await ExecutableResolver.resolveYtDlp();
     if (!resolved.available) {
       throw new DownloaderError('YT_DLP_FAILED', `yt-dlp executable could not be found for audio extraction.`);
@@ -437,7 +470,9 @@ export class YtDlpWrapper {
     const extraArgs = ['--user-agent', userAgent, '--referer', 'https://www.google.com/'];
     if (cookiePath) extraArgs.push('--cookies', cookiePath);
 
-    const args = [...resolved.args, ...extraArgs, '-x', '--audio-format', audioFormat, '-o', '-', '--no-warnings', '--no-playlist', url];
+    const targetFmt = ['mp3', 'm4a', 'aac', 'flac', 'wav', 'ogg'].includes(audioFormat) ? audioFormat : 'mp3';
+
+    const args = [...resolved.args, ...extraArgs, '-x', '--audio-format', targetFmt, '-o', '-', '--no-warnings', '--no-playlist', url];
     const child = spawn(resolved.command, args);
     return {
       stream: child.stdout,

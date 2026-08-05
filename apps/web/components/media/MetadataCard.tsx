@@ -6,7 +6,7 @@ import { formatDuration, formatBytes } from '@mediahub/utils';
 import { PlatformBadge } from './PlatformBadge';
 import { AudioPreviewPlayer } from './AudioPreviewPlayer';
 import { useDownloadMedia } from '../../hooks/useDownloadMedia';
-import { Download, Clock, User, Film, Music, CheckCircle2, Loader2, XCircle, AlertCircle, Eye, Calendar, Info, Cpu, Heart, Sparkles, Monitor } from 'lucide-react';
+import { Download, Clock, User, Film, Music, CheckCircle2, Loader2, XCircle, AlertCircle, Eye, Calendar, Info, Cpu, Heart, Sparkles, Monitor, RefreshCw } from 'lucide-react';
 
 interface MetadataCardProps {
   metadata: MediaMetadata;
@@ -30,6 +30,9 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
   const currentFormats: QualityOption[] = metadata.qualities[activeTab] || [];
   const activeFormat: QualityOption | undefined = currentFormats.find((f) => f.formatId === selectedFormatId) || currentFormats[0];
 
+  const originalAudioStreams = currentFormats.filter((f) => !f.requiresConversion);
+  const convertedAudioFormats = currentFormats.filter((f) => f.requiresConversion);
+
   const handleDownload = () => {
     if (!activeFormat) return;
     const ext = activeFormat.ext || (activeTab === 'audio' ? 'mp3' : 'mp4');
@@ -44,9 +47,56 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
     const size = fmt.filesize || fmt.filesizeApprox;
     if (size && size > 0) return formatBytes(size);
     if (fmt.filesizeEstimated && fmt.filesizeEstimated > 0) {
-      return `~${formatBytes(fmt.filesizeEstimated)} (Est.)`;
+      return `≈ ${formatBytes(fmt.filesizeEstimated)}`;
     }
     return 'Stream';
+  };
+
+  const renderFormatButton = (fmt: QualityOption) => {
+    const isSelected = (selectedFormatId || activeFormat?.formatId) === fmt.formatId;
+    const resLabel = fmt.width && fmt.height ? `${fmt.width}×${fmt.height}` : fmt.resolution || fmt.qualityLabel || 'Standard Quality';
+
+    return (
+      <button
+        key={fmt.formatId}
+        onClick={() => setSelectedFormatId(fmt.formatId)}
+        className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition-all ${
+          isSelected
+            ? 'bg-indigo-950/50 border-indigo-500/60 text-white ring-1 ring-indigo-500/50 shadow-md'
+            : 'bg-slate-900/50 border-white/5 text-slate-300 hover:bg-slate-800/60'
+        }`}
+      >
+        <div className="flex items-center gap-2.5">
+          {isSelected ? (
+            <CheckCircle2 className="w-4 h-4 text-indigo-400 shrink-0" />
+          ) : (
+            <div className="w-4 h-4 rounded-full border border-slate-600 shrink-0" />
+          )}
+          <div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <p className="text-xs font-bold text-white">{resLabel}</p>
+              {fmt.requiresConversion && (
+                <span className="bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[9px] font-extrabold px-1.5 py-0.2 rounded flex items-center gap-1">
+                  <RefreshCw className="w-2.5 h-2.5" /> Requires Conversion
+                </span>
+              )}
+              {fmt.hdr && (
+                <span className="bg-amber-500/20 text-amber-300 text-[9px] font-extrabold px-1.5 py-0.2 rounded border border-amber-500/40">
+                  HDR
+                </span>
+              )}
+            </div>
+            <p className="text-[10px] text-slate-400 uppercase tracking-tight mt-0.5">
+              {fmt.ext} • {fmt.vcodec ? fmt.vcodec.split('.')[0] : 'audio'}
+              {fmt.acodec && fmt.acodec !== 'none' ? `/${fmt.acodec.split('.')[0]}` : ''} {fmt.fps ? `• ${fmt.fps}fps` : ''} {fmt.tbr ? `• ${fmt.tbr} kbps` : ''}
+            </p>
+          </div>
+        </div>
+        <span className="text-xs font-mono text-indigo-300 font-semibold shrink-0 ml-2">
+          {getFormatSizeDisplay(fmt)}
+        </span>
+      </button>
+    );
   };
 
   return (
@@ -162,7 +212,7 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
       )}
 
       {/* Quality Selection Tabs */}
-      <div className="space-y-3 pt-2 border-t border-white/10">
+      <div className="space-y-4 pt-2 border-t border-white/10">
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Select Stream Format</span>
           <div className="flex bg-slate-900/90 p-1 rounded-xl border border-white/10">
@@ -183,59 +233,43 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
           </div>
         </div>
 
-        {/* Formats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
-          {currentFormats.length === 0 ? (
-            <p className="text-xs text-slate-500 col-span-2 py-4 text-center">No specific {activeTab} streams found. Try Combined formats.</p>
-          ) : (
-            currentFormats.map((fmt) => {
-              const isSelected = (selectedFormatId || activeFormat?.formatId) === fmt.formatId;
-              const resLabel = fmt.width && fmt.height ? `${fmt.width}×${fmt.height}` : fmt.resolution || fmt.qualityLabel || 'Standard Quality';
-              return (
-                <button
-                  key={fmt.formatId}
-                  onClick={() => setSelectedFormatId(fmt.formatId)}
-                  className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition-all ${
-                    isSelected
-                      ? 'bg-indigo-950/40 border-indigo-500/50 text-white ring-1 ring-indigo-500/40'
-                      : 'bg-slate-900/50 border-white/5 text-slate-300 hover:bg-slate-800/60'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    {isSelected ? (
-                      <CheckCircle2 className="w-4 h-4 text-indigo-400 shrink-0" />
-                    ) : (
-                      <div className="w-4 h-4 rounded-full border border-slate-600 shrink-0" />
-                    )}
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-xs font-bold text-white">
-                          {resLabel}
-                        </p>
-                        {fmt.hdr && (
-                          <span className="bg-amber-500/20 text-amber-300 text-[9px] font-extrabold px-1.5 py-0.2 rounded border border-amber-500/40">
-                            HDR
-                          </span>
-                        )}
-                        {fmt.aspectRatio && (
-                          <span className="text-[9px] text-slate-400 font-mono bg-slate-800 px-1 py-0.2 rounded">
-                            {fmt.aspectRatio}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[10px] text-slate-400 uppercase tracking-tight mt-0.5">
-                        {fmt.ext} • {fmt.vcodec ? fmt.vcodec.split('.')[0] : 'stream'}{fmt.acodec && fmt.acodec !== 'none' ? `/${fmt.acodec.split('.')[0]}` : ''} {fmt.fps ? `• ${fmt.fps}fps` : ''} {fmt.tbr ? `• ${fmt.tbr}k` : ''}
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-xs font-mono text-indigo-300 font-semibold shrink-0 ml-2">
-                    {getFormatSizeDisplay(fmt)}
-                  </span>
-                </button>
-              );
-            })
-          )}
-        </div>
+        {/* Audio Section: Original Streams vs Converted Audio Formats */}
+        {activeTab === 'audio' ? (
+          <div className="space-y-4">
+            {/* Original Streams */}
+            {originalAudioStreams.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Music className="w-3.5 h-3.5 text-indigo-400" /> Original Streams (Native Source)
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {originalAudioStreams.map(renderFormatButton)}
+                </div>
+              </div>
+            )}
+
+            {/* Converted Formats */}
+            {convertedAudioFormats.length > 0 && (
+              <div className="space-y-2 pt-1 border-t border-white/5">
+                <p className="text-[11px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <RefreshCw className="w-3.5 h-3.5 text-purple-400" /> Converted Formats (FFmpeg Pipeline)
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+                  {convertedAudioFormats.map(renderFormatButton)}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Video / Combined Formats Grid */
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+            {currentFormats.length === 0 ? (
+              <p className="text-xs text-slate-500 col-span-2 py-4 text-center">No specific {activeTab} streams found. Try Combined formats.</p>
+            ) : (
+              currentFormats.map(renderFormatButton)
+            )}
+          </div>
+        )}
       </div>
 
       {/* Error state */}
@@ -265,7 +299,7 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
             className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold text-sm py-3.5 px-6 rounded-xl shadow-lg shadow-indigo-600/30 transition-all duration-200 disabled:opacity-40"
           >
             <Download className="w-4 h-4" />
-            <span>Download {activeFormat?.width && activeFormat?.height ? `${activeFormat.width}×${activeFormat.height}` : activeFormat?.resolution || 'Selected Format'} ({getFormatSizeDisplay(activeFormat)})</span>
+            <span>Download {activeFormat?.qualityLabel || activeFormat?.resolution || 'Selected Format'} ({getFormatSizeDisplay(activeFormat)})</span>
           </button>
         )}
       </div>
