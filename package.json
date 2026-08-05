@@ -2,7 +2,8 @@
   "name": "mediahub-monorepo",
   "private": true,
   "scripts": {
-    "dev": "pnpm --recursive --parallel run dev",
+    "dev": "pnpm --filter @mediahub/web --filter @mediahub/api --filter @mediahub/worker --parallel run dev",
+    "dev:all": "pnpm --recursive --parallel run dev",
     "build": "pnpm --recursive run build",
     "test": "pnpm --recursive run test",
     "type-check": "pnpm --recursive run type-check",
