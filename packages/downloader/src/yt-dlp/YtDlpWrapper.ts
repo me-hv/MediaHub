@@ -478,4 +478,47 @@ export class YtDlpWrapper {
       process: child,
     };
   }
+
+  static async downloadAudioToFile(rawUrl: string, targetPath: string): Promise<{ path: string; size: number }> {
+    const resolved = await ExecutableResolver.resolveYtDlp();
+    if (!resolved.available) {
+      throw new DownloaderError('YT_DLP_FAILED', `yt-dlp executable could not be found on host system.`);
+    }
+
+    const url = normalizeMediaUrl(rawUrl);
+    const userAgent = getRandomUserAgent();
+    const cookiePath = resolveCookiePath();
+
+    const extraArgs = ['--user-agent', userAgent, '--referer', 'https://www.google.com/'];
+    if (cookiePath) extraArgs.push('--cookies', cookiePath);
+
+    const args = [...resolved.args, ...extraArgs, '-f', 'bestaudio/best', '-o', targetPath, '--no-warnings', '--no-playlist', url];
+
+    console.log(`[YtDlp Download] Executing: ${resolved.command} ${args.join(' ')}`);
+    const startTime = Date.now();
+
+    try {
+      const { stderr } = await execFileAsync(resolved.command, args, { timeout: 120000 });
+
+      if (!fs.existsSync(targetPath)) {
+        throw new DownloaderError('YT_DLP_FAILED', `yt-dlp execution finished but target file '${targetPath}' was not created. Stderr: ${stderr}`);
+      }
+
+      const stat = fs.statSync(targetPath);
+      if (stat.size === 0) {
+        fs.unlinkSync(targetPath);
+        throw new DownloaderError('YT_DLP_FAILED', `yt-dlp downloaded a 0-byte source file.`);
+      }
+
+      const durationMs = Date.now() - startTime;
+      console.log(`[YtDlp Download Success] Source audio saved: ${targetPath} | Size: ${(stat.size / 1024 / 1024).toFixed(2)} MB | Duration: ${durationMs}ms`);
+
+      return { path: targetPath, size: stat.size };
+    } catch (err: any) {
+      if (fs.existsSync(targetPath)) {
+        try { fs.unlinkSync(targetPath); } catch {}
+      }
+      throw classifyError(url, err.stderr || err.message);
+    }
+  }
 }

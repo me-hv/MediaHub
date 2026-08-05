@@ -22,8 +22,21 @@ export class ApiService {
       body: JSON.stringify({ url, formatId }),
       signal,
     });
-    if (!res.ok) throw new Error('Download request failed');
-    return await res.blob();
+
+    if (!res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.message || errJson?.error || `Download failed (HTTP ${res.status})`);
+      }
+      throw new Error(`Download request failed with status HTTP ${res.status}`);
+    }
+
+    const blob = await res.blob();
+    if (blob.size === 0) {
+      throw new Error('Downloaded file is 0 bytes. Conversion failed.');
+    }
+    return blob;
   }
 
   static async getDashboardStats(userId: string): Promise<DashboardStatsData> {

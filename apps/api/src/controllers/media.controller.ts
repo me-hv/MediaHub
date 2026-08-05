@@ -1,4 +1,8 @@
 import { Context } from 'hono';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import crypto from 'node:crypto';
 import { sanitizeAndValidateUrl, detectPlatform } from '@mediahub/utils';
 import { ProviderFactory, YtDlpWrapper } from '@mediahub/downloader';
 import { FFmpegManager, AudioTranscodeOptions, AudioFormat } from '@mediahub/audio';
@@ -152,43 +156,88 @@ export class MediaController {
     const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '127.0.0.1';
 
     try {
-      // 1. Handle Converted Audio Formats (conv-*)
+      // 1. Stage-Gated File-Based Audio Conversion Pipeline (conv-*)
       if (formatId.startsWith('conv-')) {
         let format: AudioFormat = 'mp3';
         let bitrate = '320';
+        let ext = 'mp3';
 
         if (formatId.includes('flac')) {
           format = 'flac';
+          ext = 'flac';
         } else if (formatId.includes('wav')) {
           format = 'wav';
+          ext = 'wav';
         } else if (formatId.includes('aac')) {
           format = 'm4a';
+          ext = 'm4a';
           bitrate = formatId.split('-')[2] || '256';
         } else if (formatId.includes('ogg')) {
           format = 'ogg';
+          ext = 'ogg';
         } else if (formatId.includes('mp3')) {
           format = 'mp3';
+          ext = 'mp3';
           bitrate = formatId.split('-')[2] || '320';
         }
 
-        const { stream: ytStream, process: ytProc } = await YtDlpWrapper.createAudioExtractStream(validation.url, 'm4a');
-        const { stream: transStream, process: ffmpegProc } = FFmpegManager.createTranscodeProcess(ytStream, { format, bitrate });
+        const tempDir = path.join(os.tmpdir(), 'mediahub-conversions');
+        if (!fs.existsSync(tempDir)) {
+          fs.mkdirSync(tempDir, { recursive: true });
+        }
 
-        const webStream = new ReadableStream({
-          start(controller) {
-            transStream.on('data', (chunk: Buffer) => controller.enqueue(chunk));
-            transStream.on('end', () => controller.close());
-            transStream.on('error', (err: Error) => {
-              if (!ytProc.killed) ytProc.kill('SIGTERM');
-              if (!ffmpegProc.killed) ffmpegProc.kill('SIGTERM');
-              controller.error(err);
-            });
-          },
-          cancel() {
-            if (!ytProc.killed) ytProc.kill('SIGTERM');
-            if (!ffmpegProc.killed) ffmpegProc.kill('SIGTERM');
-          },
-        });
+        const jobId = crypto.randomUUID();
+        const sourcePath = path.join(tempDir, `${jobId}-source.m4a`);
+        const outputPath = path.join(tempDir, `${jobId}-converted.${ext}`);
+
+        console.log(`[Stage 1/4 - Download] Starting yt-dlp download for ${validation.url}`);
+        console.log(`  Job ID: ${jobId}`);
+        console.log(`  Target Source File: ${sourcePath}`);
+
+        // STAGE 1: Download bestaudio to disk
+        const sourceResult = await YtDlpWrapper.downloadAudioToFile(validation.url, sourcePath);
+
+        if (!fs.existsSync(sourcePath) || sourceResult.size === 0) {
+          return c.json(
+            {
+              success: false,
+              stage: 'yt-dlp',
+              code: 'SOURCE_DOWNLOAD_FAILED',
+              message: 'yt-dlp failed to download source audio file.',
+              timestamp: new Date().toISOString(),
+              requestId,
+            },
+            500
+          );
+        }
+
+        console.log(`[Stage 2/4 - Conversion] Starting FFmpeg conversion: M4A -> ${format.toUpperCase()}`);
+        console.log(`  Source File: ${sourcePath} (${(sourceResult.size / 1024 / 1024).toFixed(2)} MB)`);
+        console.log(`  Target Output: ${outputPath}`);
+
+        // STAGE 2: Execute FFmpeg file-to-file conversion & wait for completion
+        const transResult = await FFmpegManager.transcodeFileToFile(sourcePath, outputPath, { format, bitrate });
+
+        // STAGE 3: Strict non-zero file verification before HTTP response
+        if (!fs.existsSync(outputPath) || transResult.size === 0) {
+          try { if (fs.existsSync(sourcePath)) fs.unlinkSync(sourcePath); } catch {}
+          try { if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath); } catch {}
+
+          return c.json(
+            {
+              success: false,
+              stage: 'ffmpeg',
+              code: 'CONVERSION_FAILED',
+              message: `FFmpeg generated a 0-byte or invalid output file for format ${format.toUpperCase()}.`,
+              timestamp: new Date().toISOString(),
+              requestId,
+            },
+            500
+          );
+        }
+
+        const finalStat = fs.statSync(outputPath);
+        console.log(`[Stage 3/4 - Verified Output] Final converted output size: ${finalStat.size} bytes (${(finalStat.size / 1024 / 1024).toFixed(2)} MB)`);
 
         const contentTypeMap: Record<string, string> = {
           mp3: 'audio/mpeg',
@@ -198,11 +247,51 @@ export class MediaController {
           ogg: 'audio/ogg',
         };
 
-        const filename = `mediahub-audio-${validation.hash.slice(0, 8)}.${format}`;
+        const filename = `mediahub-audio-${validation.hash.slice(0, 8)}.${ext}`;
 
-        c.header('Content-Type', contentTypeMap[format] || 'audio/mpeg');
+        // STAGE 4: HTTP Streaming & Cleanup
+        console.log(`[Stage 4/4 - Streaming] Sending ${filename} with Content-Length: ${finalStat.size}`);
+
+        const fileStream = fs.createReadStream(outputPath);
+
+        const webStream = new ReadableStream({
+          start(controller) {
+            fileStream.on('data', (chunk: Buffer | string) => controller.enqueue(typeof chunk === 'string' ? Buffer.from(chunk) : chunk));
+            fileStream.on('end', () => {
+              controller.close();
+              console.log(`[Cleanup] Deleting temporary files for job ${jobId}`);
+              try { if (fs.existsSync(sourcePath)) fs.unlinkSync(sourcePath); } catch {}
+              try { if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath); } catch {}
+            });
+            fileStream.on('error', (err: Error) => {
+              controller.error(err);
+              try { if (fs.existsSync(sourcePath)) fs.unlinkSync(sourcePath); } catch {}
+              try { if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath); } catch {}
+            });
+          },
+          cancel() {
+            fileStream.destroy();
+            try { if (fs.existsSync(sourcePath)) fs.unlinkSync(sourcePath); } catch {}
+            try { if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath); } catch {}
+          },
+        });
+
+        c.header('Content-Type', contentTypeMap[ext] || 'audio/mpeg');
+        c.header('Content-Length', finalStat.size.toString());
         c.header('Content-Disposition', `attachment; filename="${filename}"`);
         c.header('Cache-Control', 'no-cache');
+
+        await HistoryService.addHistory({
+          userId: user?.id,
+          urlHash: validation.hash,
+          rawUrl: validation.url,
+          title: `Converted Audio (${ext.toUpperCase()})`,
+          platform,
+          formatId,
+          mediaType: 'AUDIO',
+          status: 'SUCCESS',
+          ipAddress: ip,
+        });
 
         return c.body(webStream);
       }
@@ -245,7 +334,7 @@ export class MediaController {
 
       return c.body(webStream);
     } catch (err: any) {
-      logger.error({ error: err.message, requestId }, 'Error streaming media');
+      logger.error({ error: err.message, requestId }, 'Error downloading media');
       return c.json({ success: false, code: 'DOWNLOAD_FAILED', message: err.message, timestamp: new Date().toISOString(), requestId }, 500);
     }
   }
