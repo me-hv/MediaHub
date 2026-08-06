@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { detectPlatform, sanitizeAndValidateUrl } from '@mediahub/utils';
 import { PlatformBadge } from './PlatformBadge';
 import { Search, ArrowRight, Loader2, Clipboard } from 'lucide-react';
@@ -17,7 +17,7 @@ export function UrlInputForm({ onAnalyze, isLoading }: UrlInputFormProps) {
 
   const platform = detectPlatform(url);
 
-  // 1. Explicit Paste Handler
+  // 1. Explicit Paste Handler (Triggers immediate analysis when user pastes a link)
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     const pastedText = e.clipboardData.getData('text');
     if (!pastedText) return;
@@ -31,29 +31,13 @@ export function UrlInputForm({ onAnalyze, isLoading }: UrlInputFormProps) {
     }
   };
 
-  // 2. Debounced typing handler (triggers only when user stops typing for 600ms)
-  useEffect(() => {
-    const trimmed = url.trim();
-    if (!trimmed || trimmed === lastSubmittedUrlRef.current || isLoading) return;
-
-    const timer = setTimeout(() => {
-      const val = sanitizeAndValidateUrl(trimmed);
-      if (val.success) {
-        setValidationError(null);
-        lastSubmittedUrlRef.current = val.url;
-        onAnalyze({ url: val.url, source: 'Auto' });
-      }
-    }, 600);
-
-    return () => clearTimeout(timer);
-  }, [url, isLoading, onAnalyze]);
-
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setUrl(val);
     if (validationError) setValidationError(null);
   };
 
+  // 2. Explicit Form Submission Handler (Triggers when user clicks Analyze button or hits Enter)
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (isLoading) return;

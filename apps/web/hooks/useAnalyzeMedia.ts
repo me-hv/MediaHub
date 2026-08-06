@@ -22,7 +22,7 @@ export function useAnalyzeMedia() {
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const requestCounterRef = useRef<number>(0);
-  const lastUrlRef = useRef<string>('');
+  const activeUrlRef = useRef<string>('');
 
   const analyze = useCallback(async (options: AnalyzeRequestOptions): Promise<MediaMetadata | null> => {
     const { url, source = 'Auto', forceRefresh = false } = options;
@@ -36,13 +36,7 @@ export function useAnalyzeMedia() {
 
     console.log(`[MediaHub Lifecycle Log] ${requestId} at ${timestamp} | Source: ${source} | URL: ${cleanUrl}`);
 
-    // 1. Client-Side Deduplication: If URL is identical to last analyzed and not forced, return active metadata
-    if (!forceRefresh && lastUrlRef.current === cleanUrl && metadata) {
-      console.log(`[MediaHub Lifecycle Log] ${requestId} skipped - identical URL already loaded in UI state.`);
-      return metadata;
-    }
-
-    // 2. Client-Side Cache Check (5-minute TTL)
+    // 1. Client-Side Cache Check (5-minute TTL)
     if (!forceRefresh) {
       const cached = clientCache.get(cleanUrl);
       if (cached && Date.now() - cached.timestamp < CLIENT_CACHE_TTL_MS) {
@@ -51,14 +45,14 @@ export function useAnalyzeMedia() {
         setStatus('SUCCESS');
         setError(null);
         setWarningNotice(null);
-        lastUrlRef.current = cleanUrl;
+        activeUrlRef.current = cleanUrl;
         return cached.metadata;
       }
     }
 
-    // 3. In-Flight Request Deduplication: If request for this URL is already pending, join it
+    // 2. In-Flight Deduplication: If a request for this URL is ALREADY in flight, join it without aborting!
     if (inFlightPromises.has(cleanUrl)) {
-      console.log(`[MediaHub Lifecycle Log] ${requestId} joined existing in-flight analysis promise.`);
+      console.log(`[MediaHub Lifecycle Log] ${requestId} joined existing active in-flight request.`);
       setStatus('ANALYZING');
       try {
         const sharedResult = await inFlightPromises.get(cleanUrl)!;
@@ -66,29 +60,24 @@ export function useAnalyzeMedia() {
         setStatus('SUCCESS');
         setError(null);
         setWarningNotice(null);
-        lastUrlRef.current = cleanUrl;
+        activeUrlRef.current = cleanUrl;
         return sharedResult;
       } catch (err: any) {
-        // If shared request failed but we already had valid metadata, preserve valid metadata!
-        if (metadata) {
-          console.warn(`[MediaHub Lifecycle Log] In-flight retry failed. Preserving existing valid metadata.`);
-          setWarningNotice('Server retried analysis but encountered a temporary rate limit. Your media details remain active.');
-        } else {
-          setError(err);
-          setStatus('FAILED');
-        }
+        setError(err);
+        setStatus('FAILED');
         return null;
       }
     }
 
-    // 4. Abort previous stale request if active
-    if (abortControllerRef.current) {
-      console.log(`[MediaHub Lifecycle Log] Aborting previous pending network request.`);
+    // 3. Abort previous pending request ONLY if user switched to a DIFFERENT URL
+    if (abortControllerRef.current && activeUrlRef.current && activeUrlRef.current !== cleanUrl) {
+      console.log(`[MediaHub Lifecycle Log] Aborting previous request for different URL: ${activeUrlRef.current}`);
       abortControllerRef.current.abort();
     }
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
+    activeUrlRef.current = cleanUrl;
 
     setStatus('ANALYZING');
     setError(null);
@@ -112,7 +101,6 @@ export function useAnalyzeMedia() {
       setStatus('SUCCESS');
       setError(null);
       setWarningNotice(null);
-      lastUrlRef.current = cleanUrl;
       return fetchedMetadata;
     } catch (err: any) {
       if (err.name === 'AbortError') {
@@ -121,19 +109,11 @@ export function useAnalyzeMedia() {
       }
 
       console.error(`[MediaHub Lifecycle Log] Request ${requestId} failed: ${err.message}`);
-
-      // CRITICAL PRESERVATION RULE: Never overwrite existing valid metadata with a subsequent error!
-      if (metadata && (lastUrlRef.current === cleanUrl || metadata.url.includes(cleanUrl))) {
-        console.warn(`[MediaHub Lifecycle Log] Subsequent request failed. PRESERVING valid metadata!`);
-        setWarningNotice('YouTube is temporarily limiting requests. Your previous successful analysis remains active.');
-        setStatus('SUCCESS'); // Remain in SUCCESS state so card stays visible
-      } else {
-        setError(err);
-        setStatus('FAILED');
-      }
+      setError(err);
+      setStatus('FAILED');
       return null;
     }
-  }, [metadata]);
+  }, []);
 
   return {
     analyze,
