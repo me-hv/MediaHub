@@ -376,7 +376,7 @@ export class YtDlpWrapper {
         filesize,
         filesizeApprox,
         filesizeEstimated,
-        qualityLabel: fmt.format_note || resolution || (hasAudio && !hasVideo ? 'Original Stream' : 'Standard'),
+        qualityLabel: fmt.format_note || resolution || (hasAudio && !hasVideo ? 'Original Stream' : 'Standard Quality'),
         hasVideo,
         hasAudio,
         category: hasVideo && hasAudio ? 'combined' : hasVideo ? 'video' : 'audio',
@@ -388,14 +388,21 @@ export class YtDlpWrapper {
         requiresConversion: false,
       };
 
-      if (hasVideo && hasAudio) {
-        combined.push(option);
-      } else if (hasVideo) {
+      // Format Classification Logic:
+      // Any format with video belongs in the Video tab (sorted by resolution)
+      if (hasVideo) {
         video.push(option);
+        if (hasAudio) {
+          combined.push(option);
+        }
       } else if (hasAudio) {
         audio.push(option);
       }
     }
+
+    // Sort video formats by height / resolution descending
+    video.sort((a, b) => (b.height || 0) - (a.height || 0));
+    combined.sort((a, b) => (b.height || 0) - (a.height || 0));
 
     // Append Converted Formats if FFmpeg is available
     if (ffmpegAvailable) {
@@ -429,10 +436,14 @@ export class YtDlpWrapper {
       }
     }
 
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[MediaHub Formats Classified] Raw Formats: ${rawFormats.length} | Video Formats: ${video.length} | Combined Formats: ${combined.length} | Audio Formats: ${audio.length}`);
+    }
+
     return {
-      video: video.slice(-12),
+      video: video.slice(0, 16),
       audio: audio,
-      combined: combined.slice(-12),
+      combined: combined.slice(0, 16),
     };
   }
 

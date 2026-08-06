@@ -13,17 +13,30 @@ interface MetadataCardProps {
 }
 
 export function MetadataCard({ metadata }: MetadataCardProps) {
-  const isMusicSource = metadata.url.includes('music.youtube.com') || metadata.qualities.combined.length === 0;
+  const isMusicSource = metadata.url.includes('music.youtube.com') || (metadata.qualities.video.length === 0 && metadata.qualities.combined.length === 0);
 
-  const [activeTab, setActiveTab] = useState<QualityCategory>(isMusicSource ? 'audio' : 'combined');
+  const initialTab: QualityCategory = isMusicSource
+    ? 'audio'
+    : metadata.qualities.video.length > 0
+    ? 'video'
+    : metadata.qualities.combined.length > 0
+    ? 'combined'
+    : 'audio';
+
+  const [activeTab, setActiveTab] = useState<QualityCategory>(initialTab);
   const [selectedFormatId, setSelectedFormatId] = useState<string>('');
   const [showInspector, setShowInspector] = useState<boolean>(false);
 
   useEffect(() => {
-    if (isMusicSource) {
-      setActiveTab('audio');
-    }
-  }, [metadata.url, isMusicSource]);
+    const nextTab: QualityCategory = isMusicSource
+      ? 'audio'
+      : metadata.qualities.video.length > 0
+      ? 'video'
+      : metadata.qualities.combined.length > 0
+      ? 'combined'
+      : 'audio';
+    setActiveTab(nextTab);
+  }, [metadata.url, isMusicSource, metadata.qualities.video.length, metadata.qualities.combined.length]);
 
   const { startDownload, cancelDownload, isDownloading, error: downloadError } = useDownloadMedia();
 
@@ -216,7 +229,7 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Select Stream Format</span>
           <div className="flex bg-slate-900/90 p-1 rounded-xl border border-white/10">
-            {(['combined', 'video', 'audio'] as QualityCategory[]).map((tab) => (
+            {(['video', 'combined', 'audio'] as QualityCategory[]).map((tab) => (
               <button
                 key={tab}
                 onClick={() => {
