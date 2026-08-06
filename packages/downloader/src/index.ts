@@ -8,3 +8,7 @@ export * from './providers/GenericYtDlpProvider';
 export * from './yt-dlp/YtDlpWrapper';
 export * from './yt-dlp/ExecutableResolver';
 export * from './yt-dlp/ExecutableValidator';
+export * from './normalizers/NormalizerFactory';
+export * from './normalizers/TwitterNormalizer';
+export * from './normalizers/YouTubeNormalizer';
+export * from './normalizers/GenericNormalizer';

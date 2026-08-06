@@ -26,9 +26,9 @@ export class GenericYtDlpProvider implements IDownloaderProvider {
 
   async extractMetadata(rawUrl: string, urlHash: string): Promise<MediaMetadata> {
     const url = normalizeMediaUrl(rawUrl);
-    const json = await YtDlpWrapper.dumpJson(url);
-    const qualities = YtDlpWrapper.categorizeFormats(json.formats, json.duration);
     const platform = detectPlatform(url);
+    const json = await YtDlpWrapper.dumpJson(url);
+    const qualities = YtDlpWrapper.categorizeFormats(json.formats, json.duration, true, platform);
 
     const width = json.width;
     const height = json.height;

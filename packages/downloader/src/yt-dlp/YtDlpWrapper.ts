@@ -2,9 +2,10 @@ import { execFile, spawn, ChildProcess } from 'node:child_process';
 import { Readable } from 'node:stream';
 import { promisify } from 'node:util';
 import fs from 'node:fs';
-import { CategorizedQualities, QualityOption, PlaylistMetadata, SubtitleOption } from '@mediahub/types';
+import { CategorizedQualities, QualityOption, PlaylistMetadata, SubtitleOption, PlatformType } from '@mediahub/types';
 import { detectPlatform, normalizeMediaUrl } from '@mediahub/utils';
 import { ExecutableResolver } from './ExecutableResolver';
+import { NormalizerFactory } from '../normalizers/NormalizerFactory';
 
 const execFileAsync = promisify(execFile);
 
@@ -88,26 +89,6 @@ export interface YtDlpDumpJsonOutput {
 export interface StreamResult {
   stream: Readable;
   process: ChildProcess;
-}
-
-function calculateAspectRatio(w?: number, h?: number): string | undefined {
-  if (!w || !h || w <= 0 || h <= 0) return undefined;
-  const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
-  const divisor = gcd(w, h);
-  const num = w / divisor;
-  const den = h / divisor;
-  if (num === 16 && den === 9) return '16:9';
-  if (num === 9 && den === 16) return '9:16';
-  if (num === 4 && den === 3) return '4:3';
-  if (num === 3 && den === 4) return '3:4';
-  if (num === 1 && den === 1) return '1:1';
-  return `${num}:${den}`;
-}
-
-function calculateEstimatedFilesize(duration?: number, tbr?: number, vbr?: number, abr?: number): number | undefined {
-  const bitrate = tbr || (vbr || 0) + (abr || 0);
-  if (!duration || duration <= 0 || !bitrate || bitrate <= 0) return undefined;
-  return Math.round(((bitrate * 1000) / 8) * duration);
 }
 
 function resolveCookiePath(): string | undefined {
@@ -344,128 +325,15 @@ export class YtDlpWrapper {
   }
 
   /**
-   * Categorizes raw yt-dlp formats into Video (with Audio Muxing), Audio, and Combined categories.
-   * Virtual Merged Formats are dynamically generated for DASH video-only streams so users
-   * ALWAYS receive playable video WITH synchronized audio.
+   * Delegates format categorization to Provider-Aware Normalizers (TwitterNormalizer, YouTubeNormalizer, GenericNormalizer).
    */
-  static categorizeFormats(rawFormats: YtDlpDumpJsonOutput['formats'] = [], overallDuration = 180, ffmpegAvailable = true): CategorizedQualities {
-    const videoMap = new Map<string, QualityOption>();
-    const audioOptions: QualityOption[] = [];
-    const combinedOptions: QualityOption[] = [];
-
-    for (const fmt of rawFormats) {
-      if (!fmt.format_id) continue;
-
-      const hasVideo = !!(fmt.vcodec && fmt.vcodec !== 'none');
-      const hasAudio = !!(fmt.acodec && fmt.acodec !== 'none');
-
-      if (!hasVideo && !hasAudio) continue;
-
-      const resolution = fmt.resolution || (fmt.width && fmt.height ? `${fmt.width}×${fmt.height}` : fmt.height ? `${fmt.height}p` : undefined);
-      const filesize = fmt.filesize || fmt.filesize_approx;
-      const filesizeEstimated = !filesize ? calculateEstimatedFilesize(overallDuration, fmt.tbr, fmt.vbr, fmt.abr) : undefined;
-
-      const aspectRatio = calculateAspectRatio(fmt.width, fmt.height);
-      const isHdr = !!(fmt.dynamic_range && (fmt.dynamic_range.includes('HDR') || fmt.dynamic_range.includes('DV') || fmt.dynamic_range.includes('HLG')));
-
-      const option: QualityOption = {
-        formatId: fmt.format_id,
-        ext: fmt.ext || 'mp4',
-        resolution,
-        width: fmt.width,
-        height: fmt.height,
-        aspectRatio,
-        filesize: fmt.filesize,
-        filesizeApprox: fmt.filesize_approx,
-        filesizeEstimated,
-        qualityLabel: fmt.format_note || resolution || (hasAudio && !hasVideo ? 'Original Stream' : 'Standard Quality'),
-        hasVideo,
-        hasAudio,
-        category: hasVideo && hasAudio ? 'combined' : hasVideo ? 'video' : 'audio',
-        fps: fmt.fps,
-        vcodec: fmt.vcodec,
-        acodec: fmt.acodec,
-        tbr: fmt.tbr,
-        hdr: isHdr,
-        requiresConversion: false,
-        requiresMux: false,
-        audioIncluded: true,
-      };
-
-      if (hasVideo && hasAudio) {
-        // Native multiplexed stream
-        const key = resolution || `${fmt.height || 0}p`;
-        if (!videoMap.has(key)) {
-          videoMap.set(key, option);
-        }
-        combinedOptions.push(option);
-      } else if (hasVideo) {
-        // Video-only stream (DASH stream) -> Create Virtual Merged Combined Option (+bestaudio)
-        const key = resolution || `${fmt.height || 0}p`;
-        if (!videoMap.has(key)) {
-          const mergedOption: QualityOption = {
-            ...option,
-            formatId: `${fmt.format_id}+bestaudio`,
-            ext: 'mp4',
-            hasAudio: true,
-            audioIncluded: true,
-            requiresMux: true,
-            qualityLabel: resolution ? `${resolution} MP4` : 'Video MP4',
-          };
-          videoMap.set(key, mergedOption);
-          combinedOptions.push(mergedOption);
-        }
-      } else if (hasAudio) {
-        audioOptions.push(option);
-      }
-    }
-
-    const videoList = Array.from(videoMap.values());
-    videoList.sort((a, b) => (b.height || 0) - (a.height || 0));
-    combinedOptions.sort((a, b) => (b.height || 0) - (a.height || 0));
-
-    // Append Converted Formats if FFmpeg is available
-    if (ffmpegAvailable) {
-      const convertedSpecs = [
-        { id: 'conv-mp3-320', ext: 'mp3', label: 'MP3 320 kbps', bitrate: 320, acodec: 'mp3' },
-        { id: 'conv-mp3-256', ext: 'mp3', label: 'MP3 256 kbps', bitrate: 256, acodec: 'mp3' },
-        { id: 'conv-mp3-192', ext: 'mp3', label: 'MP3 192 kbps', bitrate: 192, acodec: 'mp3' },
-        { id: 'conv-mp3-128', ext: 'mp3', label: 'MP3 128 kbps', bitrate: 128, acodec: 'mp3' },
-        { id: 'conv-flac-lossless', ext: 'flac', label: 'FLAC Lossless', bitrate: 800, acodec: 'flac' },
-        { id: 'conv-wav-pcm', ext: 'wav', label: 'WAV PCM 16-bit', bitrate: 1411, acodec: 'pcm' },
-        { id: 'conv-aac-256', ext: 'm4a', label: 'AAC 256 kbps', bitrate: 256, acodec: 'aac' },
-        { id: 'conv-aac-192', ext: 'm4a', label: 'AAC 192 kbps', bitrate: 192, acodec: 'aac' },
-        { id: 'conv-aac-128', ext: 'm4a', label: 'AAC 128 kbps', bitrate: 128, acodec: 'aac' },
-        { id: 'conv-ogg-vorbis', ext: 'ogg', label: 'OGG Vorbis', bitrate: 192, acodec: 'vorbis' },
-      ];
-
-      for (const spec of convertedSpecs) {
-        const estimatedSize = Math.round(((spec.bitrate * 1000) / 8) * (overallDuration || 180));
-        audioOptions.push({
-          formatId: spec.id,
-          ext: spec.ext,
-          qualityLabel: spec.label,
-          hasVideo: false,
-          hasAudio: true,
-          category: 'audio',
-          acodec: spec.acodec,
-          tbr: spec.bitrate,
-          filesizeEstimated: estimatedSize,
-          requiresConversion: true,
-          audioIncluded: true,
-        });
-      }
-    }
-
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[MediaHub Virtual Muxing] Video Options: ${videoList.length} | Combined Options: ${combinedOptions.length} | Audio Options: ${audioOptions.length}`);
-    }
-
-    return {
-      video: videoList.slice(0, 16),
-      audio: audioOptions,
-      combined: combinedOptions.slice(0, 16),
-    };
+  static categorizeFormats(
+    rawFormats: YtDlpDumpJsonOutput['formats'] = [],
+    overallDuration = 180,
+    ffmpegAvailable = true,
+    platform: PlatformType = 'UNKNOWN'
+  ): CategorizedQualities {
+    return NormalizerFactory.normalize(platform, rawFormats, overallDuration, ffmpegAvailable);
   }
 
   static async createStream(rawUrl: string, formatId: string): Promise<StreamResult> {
@@ -481,27 +349,20 @@ export class YtDlpWrapper {
     const extraArgs = ['--user-agent', userAgent, '--referer', 'https://www.google.com/'];
     if (cookiePath) extraArgs.push('--cookies', cookiePath);
 
-    // If formatId is a single video format ID (e.g. "137" or "22"), auto-append "+bestaudio/best" to force FFmpeg video+audio muxing
+    // If formatId is a single video format ID (e.g. "137" or "22"), auto-append "+bestaudio/best" to force FFmpeg video+audio muxing ONLY if needed.
+    // If formatId already contains '+' (Virtual Merged) or is progressive, stream natively without forcing re-mux.
     let targetFormat = formatId;
-    if (!targetFormat.includes('+') && targetFormat !== 'best' && targetFormat !== 'bestaudio' && !targetFormat.startsWith('conv-')) {
-      targetFormat = `${formatId}+bestaudio/best`;
+    const isMuxFormat = targetFormat.includes('+');
+
+    const args = [...resolved.args, ...extraArgs, '-f', targetFormat];
+
+    if (isMuxFormat) {
+      args.push('--merge-output-format', 'mp4');
     }
 
-    const args = [
-      ...resolved.args,
-      ...extraArgs,
-      '-f',
-      targetFormat,
-      '--merge-output-format',
-      'mp4',
-      '-o',
-      '-',
-      '--no-warnings',
-      '--no-playlist',
-      url,
-    ];
+    args.push('-o', '-', '--no-warnings', '--no-playlist', url);
 
-    console.log(`[YtDlp Stream Execution] Target Format: ${targetFormat} | Command: ${resolved.command} ${args.join(' ')}`);
+    console.log(`[YtDlp Stream Execution] Format: ${targetFormat} | Mux: ${isMuxFormat} | Command: ${resolved.command} ${args.join(' ')}`);
 
     const child = spawn(resolved.command, args);
     return {
