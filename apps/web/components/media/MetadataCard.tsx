@@ -13,7 +13,8 @@ interface MetadataCardProps {
 }
 
 export function MetadataCard({ metadata }: MetadataCardProps) {
-  const isMusicSource = metadata.url.includes('music.youtube.com') || (metadata.qualities.video.length === 0 && metadata.qualities.combined.length === 0);
+  const hasVideoOrCombined = metadata.qualities.video.length > 0 || metadata.qualities.combined.length > 0;
+  const isMusicSource = metadata.url.includes('music.youtube.com') || !hasVideoOrCombined;
 
   const initialTab: QualityCategory = isMusicSource
     ? 'audio'
@@ -40,7 +41,12 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
 
   const { startDownload, cancelDownload, isDownloading, error: downloadError } = useDownloadMedia();
 
-  const currentFormats: QualityOption[] = metadata.qualities[activeTab] || [];
+  // Smart fallback: If Video tab is selected but video array is empty, automatically render combined video streams
+  const currentFormats: QualityOption[] =
+    activeTab === 'video' && metadata.qualities.video.length === 0
+      ? metadata.qualities.combined
+      : metadata.qualities[activeTab] || [];
+
   const activeFormat: QualityOption | undefined = currentFormats.find((f) => f.formatId === selectedFormatId) || currentFormats[0];
 
   const originalAudioStreams = currentFormats.filter((f) => !f.requiresConversion);
