@@ -35,6 +35,8 @@ export interface QualityOption {
   tbr?: number;
   hdr?: boolean;
   requiresConversion?: boolean;
+  requiresMux?: boolean;
+  audioIncluded?: boolean;
 }
 
 export interface CategorizedQualities {

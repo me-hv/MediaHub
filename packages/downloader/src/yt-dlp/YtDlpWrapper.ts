@@ -208,8 +208,6 @@ export class YtDlpWrapper {
 
     const timeoutMs = parseInt(process.env.YTDLP_TIMEOUT || '30000', 10);
     const maxRetries = 3;
-
-    // Exponential backoff schedule: 0s -> 2s -> 5s -> 10s
     const backoffDelays = [0, 2000, 5000, 10000];
 
     let lastError: any;
@@ -345,10 +343,15 @@ export class YtDlpWrapper {
     }
   }
 
+  /**
+   * Categorizes raw yt-dlp formats into Video (with Audio Muxing), Audio, and Combined categories.
+   * Virtual Merged Formats are dynamically generated for DASH video-only streams so users
+   * ALWAYS receive playable video WITH synchronized audio.
+   */
   static categorizeFormats(rawFormats: YtDlpDumpJsonOutput['formats'] = [], overallDuration = 180, ffmpegAvailable = true): CategorizedQualities {
-    const video: QualityOption[] = [];
-    const audio: QualityOption[] = [];
-    const combined: QualityOption[] = [];
+    const videoMap = new Map<string, QualityOption>();
+    const audioOptions: QualityOption[] = [];
+    const combinedOptions: QualityOption[] = [];
 
     for (const fmt of rawFormats) {
       if (!fmt.format_id) continue;
@@ -359,9 +362,8 @@ export class YtDlpWrapper {
       if (!hasVideo && !hasAudio) continue;
 
       const resolution = fmt.resolution || (fmt.width && fmt.height ? `${fmt.width}×${fmt.height}` : fmt.height ? `${fmt.height}p` : undefined);
-      const filesize = fmt.filesize;
-      const filesizeApprox = fmt.filesize_approx;
-      const filesizeEstimated = !filesize && !filesizeApprox ? calculateEstimatedFilesize(overallDuration, fmt.tbr, fmt.vbr, fmt.abr) : undefined;
+      const filesize = fmt.filesize || fmt.filesize_approx;
+      const filesizeEstimated = !filesize ? calculateEstimatedFilesize(overallDuration, fmt.tbr, fmt.vbr, fmt.abr) : undefined;
 
       const aspectRatio = calculateAspectRatio(fmt.width, fmt.height);
       const isHdr = !!(fmt.dynamic_range && (fmt.dynamic_range.includes('HDR') || fmt.dynamic_range.includes('DV') || fmt.dynamic_range.includes('HLG')));
@@ -373,8 +375,8 @@ export class YtDlpWrapper {
         width: fmt.width,
         height: fmt.height,
         aspectRatio,
-        filesize,
-        filesizeApprox,
+        filesize: fmt.filesize,
+        filesizeApprox: fmt.filesize_approx,
         filesizeEstimated,
         qualityLabel: fmt.format_note || resolution || (hasAudio && !hasVideo ? 'Original Stream' : 'Standard Quality'),
         hasVideo,
@@ -386,23 +388,41 @@ export class YtDlpWrapper {
         tbr: fmt.tbr,
         hdr: isHdr,
         requiresConversion: false,
+        requiresMux: false,
+        audioIncluded: true,
       };
 
-      // Format Classification Logic:
-      // Any format with video belongs in the Video tab (sorted by resolution)
-      if (hasVideo) {
-        video.push(option);
-        if (hasAudio) {
-          combined.push(option);
+      if (hasVideo && hasAudio) {
+        // Native multiplexed stream
+        const key = resolution || `${fmt.height || 0}p`;
+        if (!videoMap.has(key)) {
+          videoMap.set(key, option);
+        }
+        combinedOptions.push(option);
+      } else if (hasVideo) {
+        // Video-only stream (DASH stream) -> Create Virtual Merged Combined Option (+bestaudio)
+        const key = resolution || `${fmt.height || 0}p`;
+        if (!videoMap.has(key)) {
+          const mergedOption: QualityOption = {
+            ...option,
+            formatId: `${fmt.format_id}+bestaudio`,
+            ext: 'mp4',
+            hasAudio: true,
+            audioIncluded: true,
+            requiresMux: true,
+            qualityLabel: resolution ? `${resolution} MP4` : 'Video MP4',
+          };
+          videoMap.set(key, mergedOption);
+          combinedOptions.push(mergedOption);
         }
       } else if (hasAudio) {
-        audio.push(option);
+        audioOptions.push(option);
       }
     }
 
-    // Sort video formats by height / resolution descending
-    video.sort((a, b) => (b.height || 0) - (a.height || 0));
-    combined.sort((a, b) => (b.height || 0) - (a.height || 0));
+    const videoList = Array.from(videoMap.values());
+    videoList.sort((a, b) => (b.height || 0) - (a.height || 0));
+    combinedOptions.sort((a, b) => (b.height || 0) - (a.height || 0));
 
     // Append Converted Formats if FFmpeg is available
     if (ffmpegAvailable) {
@@ -421,7 +441,7 @@ export class YtDlpWrapper {
 
       for (const spec of convertedSpecs) {
         const estimatedSize = Math.round(((spec.bitrate * 1000) / 8) * (overallDuration || 180));
-        audio.push({
+        audioOptions.push({
           formatId: spec.id,
           ext: spec.ext,
           qualityLabel: spec.label,
@@ -432,18 +452,19 @@ export class YtDlpWrapper {
           tbr: spec.bitrate,
           filesizeEstimated: estimatedSize,
           requiresConversion: true,
+          audioIncluded: true,
         });
       }
     }
 
     if (process.env.NODE_ENV !== 'production') {
-      console.log(`[MediaHub Formats Classified] Raw Formats: ${rawFormats.length} | Video Formats: ${video.length} | Combined Formats: ${combined.length} | Audio Formats: ${audio.length}`);
+      console.log(`[MediaHub Virtual Muxing] Video Options: ${videoList.length} | Combined Options: ${combinedOptions.length} | Audio Options: ${audioOptions.length}`);
     }
 
     return {
-      video: video.slice(0, 16),
-      audio: audio,
-      combined: combined.slice(0, 16),
+      video: videoList.slice(0, 16),
+      audio: audioOptions,
+      combined: combinedOptions.slice(0, 16),
     };
   }
 
@@ -460,7 +481,28 @@ export class YtDlpWrapper {
     const extraArgs = ['--user-agent', userAgent, '--referer', 'https://www.google.com/'];
     if (cookiePath) extraArgs.push('--cookies', cookiePath);
 
-    const args = [...resolved.args, ...extraArgs, '-f', formatId, '-o', '-', '--no-warnings', '--no-playlist', url];
+    // If formatId is a single video format ID (e.g. "137" or "22"), auto-append "+bestaudio/best" to force FFmpeg video+audio muxing
+    let targetFormat = formatId;
+    if (!targetFormat.includes('+') && targetFormat !== 'best' && targetFormat !== 'bestaudio' && !targetFormat.startsWith('conv-')) {
+      targetFormat = `${formatId}+bestaudio/best`;
+    }
+
+    const args = [
+      ...resolved.args,
+      ...extraArgs,
+      '-f',
+      targetFormat,
+      '--merge-output-format',
+      'mp4',
+      '-o',
+      '-',
+      '--no-warnings',
+      '--no-playlist',
+      url,
+    ];
+
+    console.log(`[YtDlp Stream Execution] Target Format: ${targetFormat} | Command: ${resolved.command} ${args.join(' ')}`);
+
     const child = spawn(resolved.command, args);
     return {
       stream: child.stdout,

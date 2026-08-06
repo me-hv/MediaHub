@@ -56,7 +56,7 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
     if (!activeFormat) return;
     const ext = activeFormat.ext || (activeTab === 'audio' ? 'mp3' : 'mp4');
     const safeTitle = metadata.title.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 40);
-    const filename = `${safeTitle}-${activeFormat.formatId}.${ext}`;
+    const filename = `${safeTitle}-${activeFormat.formatId.replace('+', '_')}.${ext}`;
 
     startDownload(metadata.url, activeFormat.formatId, filename);
   };
@@ -94,6 +94,11 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
           <div>
             <div className="flex items-center gap-1.5 flex-wrap">
               <p className="text-xs font-bold text-white">{resLabel}</p>
+              {fmt.hasVideo && (
+                <span className="bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[9px] font-extrabold px-1.5 py-0.2 rounded flex items-center gap-1">
+                  <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" /> Audio Included
+                </span>
+              )}
               {fmt.requiresConversion && (
                 <span className="bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[9px] font-extrabold px-1.5 py-0.2 rounded flex items-center gap-1">
                   <RefreshCw className="w-2.5 h-2.5" /> Requires Conversion
@@ -273,7 +278,7 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
                 <p className="text-[11px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
                   <RefreshCw className="w-3.5 h-3.5 text-purple-400" /> Converted Formats (FFmpeg Pipeline)
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
                   {convertedAudioFormats.map(renderFormatButton)}
                 </div>
               </div>
@@ -281,7 +286,7 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
           </div>
         ) : (
           /* Video / Combined Formats Grid */
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
             {currentFormats.length === 0 ? (
               <p className="text-xs text-slate-500 col-span-2 py-4 text-center">No specific {activeTab} streams found. Try Combined formats.</p>
             ) : (
