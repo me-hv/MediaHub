@@ -1,75 +1,71 @@
 import { Context } from 'hono';
+import { sanitizeAndValidateUrl, detectPlatform } from '@mediahub/utils';
+import { ProviderFactory, YtDlpWrapper, DownloaderError } from '@mediahub/downloader';
+import { FFmpegManager, AudioFormat } from '@mediahub/audio';
+import { HistoryService } from '../services/history.service';
+import { logger } from '../utils/logger';
+import { AppEnv } from '../app';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
-import { sanitizeAndValidateUrl, detectPlatform } from '@mediahub/utils';
-import { ProviderFactory, YtDlpWrapper } from '@mediahub/downloader';
-import { FFmpegManager, AudioTranscodeOptions, AudioFormat } from '@mediahub/audio';
-import { MediaService } from '../services/media.service';
-import { HistoryService } from '../services/history.service';
-import { logger } from '../utils/logger';
-import type { AppEnv } from '../app';
 
 export class MediaController {
   static async analyzeMedia(c: Context<AppEnv>) {
+    const user = c.get('user');
     const requestId = c.get('requestId') || 'req-unknown';
 
     let body: any;
     try {
       body = await c.req.json();
     } catch {
-      return c.json(
-        {
-          success: false,
-          code: 'INVALID_JSON',
-          message: 'Malformed JSON payload provided.',
-          timestamp: new Date().toISOString(),
-          requestId,
-        },
-        400
-      );
+      return c.json({ success: false, code: 'INVALID_JSON', message: 'Malformed JSON payload.', timestamp: new Date().toISOString(), requestId }, 400);
     }
 
     const validation = sanitizeAndValidateUrl(body?.url);
     if (!validation.success) {
-      return c.json(
-        {
-          success: false,
-          code: 'INVALID_URL',
-          message: validation.error,
-          timestamp: new Date().toISOString(),
-          requestId,
-        },
-        400
-      );
+      return c.json({ success: false, code: 'INVALID_URL', message: validation.error, timestamp: new Date().toISOString(), requestId }, 400);
     }
 
+    const provider = ProviderFactory.getProvider(validation.url);
+
     try {
-      const metadata = await MediaService.analyzeMedia(validation.url, validation.hash);
+      const result = await provider.extractMetadataResult!(validation.url, validation.hash);
+
+      if (!result.success) {
+        const error = result.error as DownloaderError;
+        return c.json(
+          {
+            success: false,
+            code: error.code || 'EXTRACTION_FAILED',
+            message: error.message,
+            retryAfter: error.retryAfter,
+            timestamp: new Date().toISOString(),
+            requestId,
+          },
+          error.code === 'POST_NOT_FOUND' ? 404 : error.code === 'PRIVATE_POST' ? 403 : error.code?.includes('RATE_LIMIT') ? 429 : 500
+        );
+      }
+
+      await HistoryService.addHistory({
+        userId: user?.id,
+        urlHash: validation.hash,
+        rawUrl: validation.url,
+        title: result.metadata.title,
+        platform: result.metadata.platform,
+        formatId: 'analyze',
+        status: 'SUCCESS',
+      });
 
       return c.json({
         success: true,
-        data: { metadata },
+        data: result.metadata,
         timestamp: new Date().toISOString(),
         requestId,
       });
     } catch (err: any) {
-      logger.error({ error: err.message, code: err.code, requestId }, 'Error analyzing media');
-      const isRateLimit = err.code === 'YOUTUBE_RATE_LIMIT' || err.code === 'INSTAGRAM_RATE_LIMIT' || err.code === 'RATE_LIMIT_EXCEEDED';
-      const statusCode = isRateLimit ? 429 : 500;
-
-      return c.json(
-        {
-          success: false,
-          code: err.code || 'ANALYSIS_FAILED',
-          message: err.message || 'Unable to extract media metadata.',
-          retryAfter: err.retryAfter || (isRateLimit ? 60 : undefined),
-          timestamp: new Date().toISOString(),
-          requestId,
-        },
-        statusCode
-      );
+      logger.error({ error: err.message, requestId }, 'Error analyzing media');
+      return c.json({ success: false, code: 'ANALYSIS_FAILED', message: err.message, timestamp: new Date().toISOString(), requestId }, 500);
     }
   }
 
@@ -156,7 +152,7 @@ export class MediaController {
     const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '127.0.0.1';
 
     try {
-      // 1. Stage-Gated File-Based Audio Conversion Pipeline (conv-*)
+      // 1. Stage-Gated Audio Conversion Pipeline (conv-*)
       if (formatId.startsWith('conv-')) {
         let format: AudioFormat = 'mp3';
         let bitrate = '320';
@@ -296,9 +292,71 @@ export class MediaController {
         return c.body(webStream);
       }
 
-      // 2. Handle Native Source Stream Downloads
-      const provider = ProviderFactory.getProvider(validation.url);
-      const { stream, process: childProcess } = await provider.getStream(validation.url, formatId);
+      // 2. Stage-Gated Native Source Media Downloads (Disk-Verified)
+      const tempDir = path.join(os.tmpdir(), 'mediahub-downloads');
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+
+      const jobId = crypto.randomUUID();
+      const ext = formatId === 'bestaudio' ? 'mp3' : 'mp4';
+      const targetPath = path.join(tempDir, `${jobId}-media.${ext}`);
+
+      console.log(`[Stage 1/3 - Download] Starting native download for ${validation.url}`);
+      console.log(`  Job ID: ${jobId}`);
+      console.log(`  Format ID: ${formatId}`);
+      console.log(`  Target Path: ${targetPath}`);
+
+      const downloadResult = await YtDlpWrapper.downloadMediaToFile(validation.url, formatId, targetPath);
+
+      // STAGE 2: Non-zero file verification before HTTP response
+      if (!fs.existsSync(targetPath) || downloadResult.size === 0) {
+        try { if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath); } catch {}
+
+        return c.json(
+          {
+            success: false,
+            stage: 'yt-dlp',
+            code: 'DOWNLOADED_FILE_EMPTY',
+            message: 'Downloaded media file is 0 bytes or was not created.',
+            timestamp: new Date().toISOString(),
+            requestId,
+          },
+          500
+        );
+      }
+
+      const finalStat = fs.statSync(targetPath);
+      const filename = `mediahub-${validation.hash.slice(0, 8)}.${ext}`;
+
+      console.log(`[Stage 2/3 - Verified Output] Size: ${finalStat.size} bytes (${(finalStat.size / 1024 / 1024).toFixed(2)} MB)`);
+      console.log(`[Stage 3/3 - Streaming] Sending ${filename} with Content-Length: ${finalStat.size}`);
+
+      const fileStream = fs.createReadStream(targetPath);
+
+      const webStream = new ReadableStream({
+        start(controller) {
+          fileStream.on('data', (chunk: Buffer | string) => controller.enqueue(typeof chunk === 'string' ? Buffer.from(chunk) : chunk));
+          fileStream.on('end', () => {
+            controller.close();
+            console.log(`[Cleanup] Deleting temporary file for job ${jobId}`);
+            try { if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath); } catch {}
+          });
+          fileStream.on('error', (err: Error) => {
+            controller.error(err);
+            try { if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath); } catch {}
+          });
+        },
+        cancel() {
+          fileStream.destroy();
+          try { if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath); } catch {}
+        },
+      });
+
+      c.header('Content-Type', ext === 'mp3' ? 'audio/mpeg' : 'video/mp4');
+      c.header('Content-Length', finalStat.size.toString());
+      c.header('Content-Disposition', `attachment; filename="${filename}"`);
+      c.header('Cache-Control', 'no-cache');
 
       await HistoryService.addHistory({
         userId: user?.id,
@@ -312,30 +370,10 @@ export class MediaController {
         ipAddress: ip,
       });
 
-      const webStream = new ReadableStream({
-        start(controller) {
-          stream.on('data', (chunk: Buffer) => controller.enqueue(chunk));
-          stream.on('end', () => controller.close());
-          stream.on('error', (err: Error) => {
-            if (!childProcess.killed) childProcess.kill('SIGTERM');
-            controller.error(err);
-          });
-        },
-        cancel() {
-          if (!childProcess.killed) childProcess.kill('SIGTERM');
-        },
-      });
-
-      const filename = `mediahub-${validation.hash.slice(0, 8)}.${formatId === 'bestaudio' ? 'mp3' : 'mp4'}`;
-
-      c.header('Content-Type', 'application/octet-stream');
-      c.header('Content-Disposition', `attachment; filename="${filename}"`);
-      c.header('Cache-Control', 'no-cache');
-
       return c.body(webStream);
     } catch (err: any) {
       logger.error({ error: err.message, requestId }, 'Error downloading media');
-      return c.json({ success: false, code: 'DOWNLOAD_FAILED', message: err.message, timestamp: new Date().toISOString(), requestId }, 500);
+      return c.json({ success: false, code: err.code || 'DOWNLOAD_FAILED', message: err.message, timestamp: new Date().toISOString(), requestId }, 500);
     }
   }
 }

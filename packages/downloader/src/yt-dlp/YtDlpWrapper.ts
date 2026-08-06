@@ -2,6 +2,8 @@ import { execFile, spawn, ChildProcess } from 'node:child_process';
 import { Readable } from 'node:stream';
 import { promisify } from 'node:util';
 import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
 import { CategorizedQualities, QualityOption, PlaylistMetadata, SubtitleOption, PlatformType } from '@mediahub/types';
 import { detectPlatform, normalizeMediaUrl } from '@mediahub/utils';
 import { ExecutableResolver } from './ExecutableResolver';
@@ -18,6 +20,8 @@ export type DownloaderErrorCode =
   | 'POST_NOT_FOUND'
   | 'INVALID_URL'
   | 'NETWORK_ERROR'
+  | 'DOWNLOAD_FILE_NOT_CREATED'
+  | 'DOWNLOADED_FILE_EMPTY'
   | 'YT_DLP_FAILED';
 
 export class DownloaderError extends Error {
@@ -336,6 +340,92 @@ export class YtDlpWrapper {
     return NormalizerFactory.normalize(platform, rawFormats, overallDuration, ffmpegAvailable);
   }
 
+  /**
+   * Unified Stage-Gated Media File Downloader with Non-Zero File Size Verification.
+   * Downloads requested format directly to disk, validates file existence and non-zero byte count,
+   * and logs full diagnostics.
+   */
+  static async downloadMediaToFile(
+    rawUrl: string,
+    formatId: string,
+    targetPath: string
+  ): Promise<{ path: string; size: number }> {
+    const resolved = await ExecutableResolver.resolveYtDlp();
+    if (!resolved.available) {
+      throw new DownloaderError('YT_DLP_FAILED', `yt-dlp executable could not be found on host system.`);
+    }
+
+    const url = normalizeMediaUrl(rawUrl);
+    const platform = detectPlatform(url);
+    const userAgent = getRandomUserAgent();
+    const cookiePath = resolveCookiePath();
+
+    const extraArgs = ['--user-agent', userAgent, '--referer', 'https://www.google.com/'];
+    if (cookiePath) extraArgs.push('--cookies', cookiePath);
+
+    // Target format formatting
+    let targetFormat = formatId;
+    const requiresMux = targetFormat.includes('+');
+
+    const args = [...resolved.args, ...extraArgs, '-f', targetFormat];
+    if (requiresMux) {
+      args.push('--merge-output-format', 'mp4');
+    }
+    args.push('-o', targetPath, '--no-warnings', '--no-playlist', url);
+
+    const dir = path.dirname(targetPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    const startTime = Date.now();
+    console.log(`[MediaHub Download Pipeline] Starting Download Job`);
+    console.log(`  URL: ${url}`);
+    console.log(`  Platform: ${platform}`);
+    console.log(`  Format ID: ${formatId} (Requires Mux: ${requiresMux})`);
+    console.log(`  Destination: ${targetPath}`);
+    console.log(`  Command: ${resolved.command} ${args.join(' ')}`);
+
+    try {
+      const { stderr, stdout } = await execFileAsync(resolved.command, args, { timeout: 180000 });
+      const durationMs = Date.now() - startTime;
+
+      // STAGE 1: Verify file existence
+      if (!fs.existsSync(targetPath)) {
+        console.error(`[MediaHub Download Error] Target file was not created by yt-dlp.`);
+        console.error(`  Stderr: ${stderr}`);
+        throw new DownloaderError(
+          'DOWNLOAD_FILE_NOT_CREATED',
+          `yt-dlp completed execution but output file '${targetPath}' was not created. Stderr: ${stderr}`
+        );
+      }
+
+      // STAGE 2: Verify non-zero file size
+      const stat = fs.statSync(targetPath);
+      if (stat.size === 0) {
+        console.error(`[MediaHub Download Error] Downloaded target file is 0 bytes.`);
+        try { fs.unlinkSync(targetPath); } catch {}
+        throw new DownloaderError(
+          'DOWNLOADED_FILE_EMPTY',
+          `Downloaded media file is 0 bytes. The selected format or video stream is unavailable.`
+        );
+      }
+
+      console.log(`[MediaHub Download Success] File Verified & Saved!`);
+      console.log(`  File Path: ${targetPath}`);
+      console.log(`  File Size: ${stat.size} bytes (${(stat.size / 1024 / 1024).toFixed(2)} MB)`);
+      console.log(`  Duration: ${durationMs}ms`);
+
+      return { path: targetPath, size: stat.size };
+    } catch (err: any) {
+      if (fs.existsSync(targetPath)) {
+        try { fs.unlinkSync(targetPath); } catch {}
+      }
+      if (err instanceof DownloaderError) throw err;
+      throw classifyError(url, err.stderr || err.message);
+    }
+  }
+
   static async createStream(rawUrl: string, formatId: string): Promise<StreamResult> {
     const resolved = await ExecutableResolver.resolveYtDlp();
     if (!resolved.available) {
@@ -349,20 +439,14 @@ export class YtDlpWrapper {
     const extraArgs = ['--user-agent', userAgent, '--referer', 'https://www.google.com/'];
     if (cookiePath) extraArgs.push('--cookies', cookiePath);
 
-    // If formatId is a single video format ID (e.g. "137" or "22"), auto-append "+bestaudio/best" to force FFmpeg video+audio muxing ONLY if needed.
-    // If formatId already contains '+' (Virtual Merged) or is progressive, stream natively without forcing re-mux.
     let targetFormat = formatId;
     const isMuxFormat = targetFormat.includes('+');
 
     const args = [...resolved.args, ...extraArgs, '-f', targetFormat];
-
     if (isMuxFormat) {
       args.push('--merge-output-format', 'mp4');
     }
-
     args.push('-o', '-', '--no-warnings', '--no-playlist', url);
-
-    console.log(`[YtDlp Stream Execution] Format: ${targetFormat} | Mux: ${isMuxFormat} | Command: ${resolved.command} ${args.join(' ')}`);
 
     const child = spawn(resolved.command, args);
     return {
@@ -384,7 +468,6 @@ export class YtDlpWrapper {
     const extraArgs = ['--user-agent', userAgent, '--referer', 'https://www.google.com/'];
     if (cookiePath) extraArgs.push('--cookies', cookiePath);
 
-    // Stream raw bestaudio container directly to stdout
     const args = [...resolved.args, ...extraArgs, '-f', 'bestaudio/best', '-o', '-', '--no-warnings', '--no-playlist', url];
     const child = spawn(resolved.command, args);
     return {
@@ -394,45 +477,6 @@ export class YtDlpWrapper {
   }
 
   static async downloadAudioToFile(rawUrl: string, targetPath: string): Promise<{ path: string; size: number }> {
-    const resolved = await ExecutableResolver.resolveYtDlp();
-    if (!resolved.available) {
-      throw new DownloaderError('YT_DLP_FAILED', `yt-dlp executable could not be found on host system.`);
-    }
-
-    const url = normalizeMediaUrl(rawUrl);
-    const userAgent = getRandomUserAgent();
-    const cookiePath = resolveCookiePath();
-
-    const extraArgs = ['--user-agent', userAgent, '--referer', 'https://www.google.com/'];
-    if (cookiePath) extraArgs.push('--cookies', cookiePath);
-
-    const args = [...resolved.args, ...extraArgs, '-f', 'bestaudio/best', '-o', targetPath, '--no-warnings', '--no-playlist', url];
-
-    console.log(`[YtDlp Download] Executing: ${resolved.command} ${args.join(' ')}`);
-    const startTime = Date.now();
-
-    try {
-      const { stderr } = await execFileAsync(resolved.command, args, { timeout: 120000 });
-
-      if (!fs.existsSync(targetPath)) {
-        throw new DownloaderError('YT_DLP_FAILED', `yt-dlp execution finished but target file '${targetPath}' was not created. Stderr: ${stderr}`);
-      }
-
-      const stat = fs.statSync(targetPath);
-      if (stat.size === 0) {
-        fs.unlinkSync(targetPath);
-        throw new DownloaderError('YT_DLP_FAILED', `yt-dlp downloaded a 0-byte source file.`);
-      }
-
-      const durationMs = Date.now() - startTime;
-      console.log(`[YtDlp Download Success] Source audio saved: ${targetPath} | Size: ${(stat.size / 1024 / 1024).toFixed(2)} MB | Duration: ${durationMs}ms`);
-
-      return { path: targetPath, size: stat.size };
-    } catch (err: any) {
-      if (fs.existsSync(targetPath)) {
-        try { fs.unlinkSync(targetPath); } catch {}
-      }
-      throw classifyError(url, err.stderr || err.message);
-    }
+    return this.downloadMediaToFile(rawUrl, 'bestaudio/best', targetPath);
   }
 }
