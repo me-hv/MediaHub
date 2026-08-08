@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useSidebar } from '../../context/SidebarContext';
 import { useAuth } from '../../context/AuthContext';
+import { HeaderDownloadIndicator } from './HeaderDownloadIndicator';
 
 export function AppHeader() {
   const { toggleMobile } = useSidebar();
@@ -49,8 +50,11 @@ export function AppHeader() {
         </button>
       </div>
 
-      {/* Right Section: Quick Actions, Notifications & Avatar */}
+      {/* Right Section: Quick Actions, Download Activity, Notifications & Avatar */}
       <div className="flex items-center gap-2.5">
+        {/* Active Download Indicator */}
+        <HeaderDownloadIndicator />
+
         {/* Quick Download Action */}
         <Link
           href="/"

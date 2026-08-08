@@ -5,7 +5,8 @@ import { MediaMetadata, QualityCategory, QualityOption } from '@mediahub/types';
 import { formatDuration, formatBytes } from '@mediahub/utils';
 import { PlatformBadge } from './PlatformBadge';
 import { AudioPreviewPlayer } from './AudioPreviewPlayer';
-import { useDownloadMedia } from '../../hooks/useDownloadMedia';
+import { useDownload } from '../../context/DownloadContext';
+import { DownloadProgressPanel } from './DownloadProgressPanel';
 import { Download, Clock, User, Film, Music, CheckCircle2, Loader2, XCircle, AlertCircle, Eye, Calendar, Info, Cpu, Heart, Sparkles, Monitor, RefreshCw } from 'lucide-react';
 
 interface MetadataCardProps {
@@ -39,9 +40,8 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
     setActiveTab(nextTab);
   }, [metadata.url, isMusicSource, metadata.qualities.video.length, metadata.qualities.combined.length]);
 
-  const { startDownload, cancelDownload, isDownloading, error: downloadError } = useDownloadMedia();
+  const { startDownload, activeJob } = useDownload();
 
-  // Smart fallback: If Video tab is selected but video array is empty, automatically render combined video streams
   const currentFormats: QualityOption[] =
     activeTab === 'video' && metadata.qualities.video.length === 0
       ? metadata.qualities.combined
@@ -52,15 +52,6 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
   const originalAudioStreams = currentFormats.filter((f) => !f.requiresConversion);
   const convertedAudioFormats = currentFormats.filter((f) => f.requiresConversion);
 
-  const handleDownload = () => {
-    if (!activeFormat) return;
-    const ext = activeFormat.ext || (activeTab === 'audio' ? 'mp3' : 'mp4');
-    const safeTitle = metadata.title.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 40);
-    const filename = `${safeTitle}-${activeFormat.formatId.replace('+', '_')}.${ext}`;
-
-    startDownload(metadata.url, activeFormat.formatId, filename);
-  };
-
   const getFormatSizeDisplay = (fmt?: QualityOption): string => {
     if (!fmt) return 'Stream';
     const size = fmt.filesize || fmt.filesizeApprox;
@@ -69,6 +60,23 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
       return `≈ ${formatBytes(fmt.filesizeEstimated)}`;
     }
     return 'Stream';
+  };
+
+  const handleDownload = () => {
+    if (!activeFormat) return;
+    const ext = activeFormat.ext || (activeTab === 'audio' ? 'mp3' : 'mp4');
+    const resLabel = activeFormat.width && activeFormat.height ? `${activeFormat.width}×${activeFormat.height}` : activeFormat.resolution || activeFormat.qualityLabel || 'Standard Quality';
+
+    startDownload({
+      url: metadata.url,
+      formatId: activeFormat.formatId,
+      title: metadata.title,
+      formatLabel: resLabel,
+      requiresConversion: !!activeFormat.requiresConversion,
+      ext,
+      thumbnail: metadata.thumbnail,
+      estimatedSize: getFormatSizeDisplay(activeFormat),
+    });
   };
 
   const renderFormatButton = (fmt: QualityOption) => {
@@ -122,6 +130,8 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
       </button>
     );
   };
+
+  const isDownloadingThisMedia = activeJob && activeJob.url === metadata.url && (activeJob.stage === 'PREPARING' || activeJob.stage === 'DOWNLOADING_SOURCE' || activeJob.stage === 'CONVERTING_FFMPEG' || activeJob.stage === 'STREAMING');
 
   return (
     <div className="w-full max-w-3xl mx-auto glass-panel rounded-2xl p-6 space-y-6 shadow-2xl transition-all duration-300">
@@ -296,37 +306,28 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
         )}
       </div>
 
-      {/* Error state */}
-      {downloadError && (
-        <div className="text-xs text-rose-400 bg-rose-500/10 p-3 rounded-xl border border-rose-500/20 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-400" />
-            <span>{downloadError}</span>
-          </div>
+      {/* Real-time Download Processing Panel */}
+      {activeJob && activeJob.url === metadata.url && (
+        <div className="pt-2">
+          <DownloadProgressPanel />
         </div>
       )}
 
-      {/* Download Trigger */}
-      <div className="flex items-center gap-3 pt-2">
-        {isDownloading ? (
-          <button
-            onClick={cancelDownload}
-            className="w-full flex items-center justify-center gap-2 bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 font-medium text-sm py-3.5 px-6 rounded-xl transition-all"
-          >
-            <XCircle className="w-4 h-4" />
-            <span>Cancel Download Stream</span>
-          </button>
-        ) : (
+      {/* Main Download Trigger */}
+      {(!activeJob || activeJob.url !== metadata.url || activeJob.stage === 'SUCCESS' || activeJob.stage === 'FAILED' || activeJob.stage === 'CANCELLED') && (
+        <div className="flex items-center gap-3 pt-2">
           <button
             onClick={handleDownload}
-            disabled={!activeFormat}
+            disabled={!activeFormat || !!isDownloadingThisMedia}
             className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold text-sm py-3.5 px-6 rounded-xl shadow-lg shadow-indigo-600/30 transition-all duration-200 disabled:opacity-40"
           >
             <Download className="w-4 h-4" />
-            <span>Download {activeFormat?.qualityLabel || activeFormat?.resolution || 'Selected Format'} ({getFormatSizeDisplay(activeFormat)})</span>
+            <span>
+              Download {activeFormat?.qualityLabel || activeFormat?.resolution || 'Selected Format'} ({getFormatSizeDisplay(activeFormat)})
+            </span>
           </button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
