@@ -16,6 +16,7 @@ import { MediaHubMetrics } from '@mediahub/metrics';
 import { globalQueueManager } from '@mediahub/queue';
 import { StorageFactory } from '@mediahub/storage';
 import { FeatureFlagService } from '@mediahub/flags';
+import { ExecutableResolver } from '@mediahub/downloader';
 import type { UserPayload } from './middlewares/auth.middleware';
 
 export interface AppEnv {
@@ -89,6 +90,38 @@ app.get('/health', (c) => {
   });
 });
 
+// Real Extractor Diagnostic Endpoint (Requirement 12)
+app.get('/health/extractors', async (c) => {
+  const requestId = c.get('requestId') || 'req-unknown';
+  const ytDlp = await ExecutableResolver.resolveYtDlp(true);
+  const ffmpeg = await ExecutableResolver.resolveFfmpeg(true);
+
+  return c.json({
+    success: true,
+    status: ytDlp.available ? 'healthy' : 'degraded',
+    extractors: {
+      ytDlp: {
+        available: ytDlp.available,
+        version: ytDlp.version,
+        command: ytDlp.command,
+        args: ytDlp.args,
+        displayPath: ytDlp.displayPath,
+      },
+      ffmpeg: {
+        available: ffmpeg.available,
+        version: ffmpeg.version,
+        command: ffmpeg.command,
+        args: ffmpeg.args,
+        displayPath: ffmpeg.displayPath,
+      },
+    },
+    nodeVersion: process.version,
+    envMode: process.env.NODE_ENV || 'development',
+    timestamp: new Date().toISOString(),
+    requestId,
+  });
+});
+
 // Worker Operational Telemetry Probe
 app.get('/health/workers', (c) => {
   const requestId = c.get('requestId') || 'req-unknown';
@@ -145,6 +178,23 @@ app.route('/api/v1', playlistRoutes);
 app.route('/api/v1', queueRoutes);
 app.route('/api/v1', publicRoutes);
 app.route('/api/v1', orgRoutes);
+
+// Debug endpoint alias
+app.get('/api/v1/debug/extractors', async (c) => {
+  const ytDlp = await ExecutableResolver.resolveYtDlp(true);
+  const ffmpeg = await ExecutableResolver.resolveFfmpeg(true);
+
+  return c.json({
+    success: true,
+    extractors: {
+      ytDlp,
+      ffmpeg,
+    },
+    nodeVersion: process.version,
+    platform: process.platform,
+    envMode: process.env.NODE_ENV || 'development',
+  });
+});
 
 // Legacy fallback (/api/)
 app.route('/api', mediaRoutes);

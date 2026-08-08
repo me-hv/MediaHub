@@ -27,12 +27,14 @@ export type DownloaderErrorCode =
 export class DownloaderError extends Error {
   readonly code: DownloaderErrorCode;
   readonly retryAfter?: number;
+  readonly originalStderr?: string;
 
-  constructor(code: DownloaderErrorCode, message: string, retryAfter?: number) {
+  constructor(code: DownloaderErrorCode, message: string, retryAfter?: number, originalStderr?: string) {
     super(message);
     this.name = 'DownloaderError';
     this.code = code;
     this.retryAfter = retryAfter;
+    this.originalStderr = originalStderr;
   }
 }
 
@@ -125,7 +127,8 @@ function classifyError(url: string, rawError: string): DownloaderError {
     return new DownloaderError(
       'YOUTUBE_RATE_LIMIT',
       'YouTube is temporarily limiting requests. MediaHub will automatically retry. If the issue persists, connect a browser session using cookies for authenticated extraction.',
-      60
+      60,
+      rawError
     );
   }
 
@@ -133,14 +136,17 @@ function classifyError(url: string, rawError: string): DownloaderError {
     return new DownloaderError(
       'INSTAGRAM_RATE_LIMIT',
       'Instagram is temporarily limiting anonymous requests. Please wait one minute and try again or configure authentication cookies.',
-      60
+      60,
+      rawError
     );
   }
 
   if (isInstagram && (err.includes('empty media response') || err.includes('login') || err.includes('redirecting to login'))) {
     return new DownloaderError(
       'LOGIN_REQUIRED',
-      'This Instagram post or reel requires login to view. Please try another link or configure cookies in settings.'
+      'This Instagram post or reel requires login to view. Please try another link or configure cookies in settings.',
+      undefined,
+      rawError
     );
   }
 
@@ -148,27 +154,36 @@ function classifyError(url: string, rawError: string): DownloaderError {
     return new DownloaderError(
       'RATE_LIMIT_EXCEEDED',
       'Reddit denied anonymous access. Content may require authentication or updated headers.',
-      60
+      60,
+      rawError
     );
   }
 
   if (err.includes('private video') || err.includes('private media') || err.includes('login required')) {
-    return new DownloaderError('PRIVATE_POST', 'This media is private or restricted.');
+    return new DownloaderError('PRIVATE_POST', 'This media is private or restricted.', undefined, rawError);
   }
 
   if (err.includes('404') || err.includes('not found') || err.includes('video unavailable') || err.includes('post not found')) {
-    return new DownloaderError('POST_NOT_FOUND', 'Media not found at this URL. Content may have been removed or deleted.');
+    return new DownloaderError('POST_NOT_FOUND', 'Media not found at this URL. Content may have been removed or deleted.', undefined, rawError);
   }
 
   if (err.includes('unsupported url') || err.includes('no suitable extractor')) {
-    return new DownloaderError('INVALID_URL', `This URL is not currently supported: ${url}`);
+    return new DownloaderError('INVALID_URL', `This URL is not currently supported: ${url}`, undefined, rawError);
   }
 
   if (err.includes('etimedout') || err.includes('econnrefused') || err.includes('unable to download webpage')) {
-    return new DownloaderError('NETWORK_ERROR', 'Unable to reach the media provider. Please check network status.');
+    return new DownloaderError('NETWORK_ERROR', 'Unable to reach the media provider. Please check network status.', undefined, rawError);
   }
 
-  return new DownloaderError('YT_DLP_FAILED', 'Failed to extract metadata for URL. Please verify the media is public.');
+  // Preserve underlying error detail cleanly instead of blind generic fallback
+  const firstErrorLine = rawError
+    ? rawError
+        .split('\n')
+        .map((l) => l.trim())
+        .find((l) => l.startsWith('ERROR:') || l.includes('Error')) || rawError.slice(0, 200)
+    : 'yt-dlp extraction error';
+
+  return new DownloaderError('YT_DLP_FAILED', `Metadata extraction failed: ${firstErrorLine}`, undefined, rawError);
 }
 
 export class YtDlpWrapper {
@@ -226,32 +241,31 @@ export class YtDlpWrapper {
 
         const durationMs = Date.now() - startTime;
 
-        if (process.env.NODE_ENV !== 'production') {
-          console.log(`[YtDlp Dev Log] Metadata Extraction Success (Attempt ${attempt}/${maxRetries})`);
-          console.log(`  Normalized URL: ${url}`);
-          console.log(`  Provider: ${platform}`);
-          console.log(`  Command: ${resolved.command} ${args.join(' ')}`);
-          console.log(`  Execution Time: ${durationMs}ms`);
-        }
+        console.log(`[MediaHub Analyze] Extraction Success (Attempt ${attempt}/${maxRetries})`);
+        console.log(`  URL: ${url}`);
+        console.log(`  Platform: ${platform}`);
+        console.log(`  Executable: ${resolved.command}`);
+        console.log(`  Execution Time: ${durationMs}ms`);
 
         return JSON.parse(stdout) as YtDlpDumpJsonOutput;
       } catch (err: any) {
         lastError = err;
         const durationMs = Date.now() - startTime;
 
-        if (process.env.NODE_ENV !== 'production') {
-          console.warn(`[YtDlp Dev Log] Attempt ${attempt}/${maxRetries} Failed`);
-          console.warn(`  Normalized URL: ${url}`);
-          console.warn(`  Provider: ${platform}`);
-          console.warn(`  Command: ${resolved.command} ${args.join(' ')}`);
-          console.warn(`  Error: ${err.message || err.stderr}`);
-          console.warn(`  Execution Time: ${durationMs}ms`);
-        }
+        console.warn(`[MediaHub Analyze] Attempt ${attempt}/${maxRetries} Failed`);
+        console.warn(`  URL: ${url}`);
+        console.warn(`  Platform: ${platform}`);
+        console.warn(`  Executable: ${resolved.command}`);
+        console.warn(`  Command: ${resolved.command} ${args.join(' ')}`);
+        console.warn(`  Stderr: ${err.stderr || err.message}`);
+        console.warn(`  Execution Time: ${durationMs}ms`);
 
         if (err.code === 'ENOENT') {
           throw new DownloaderError(
             'YT_DLP_FAILED',
-            `yt-dlp executable could not be executed at '${resolved.displayPath}'. Please verify installation or set YT_DLP_PATH.`
+            `yt-dlp executable could not be executed at '${resolved.displayPath}'. Please verify installation or set YT_DLP_PATH.`,
+            undefined,
+            err.stderr || err.message
           );
         }
       }
@@ -328,9 +342,6 @@ export class YtDlpWrapper {
     }
   }
 
-  /**
-   * Delegates format categorization to Provider-Aware Normalizers (TwitterNormalizer, YouTubeNormalizer, GenericNormalizer).
-   */
   static categorizeFormats(
     rawFormats: YtDlpDumpJsonOutput['formats'] = [],
     overallDuration = 180,
@@ -340,11 +351,6 @@ export class YtDlpWrapper {
     return NormalizerFactory.normalize(platform, rawFormats, overallDuration, ffmpegAvailable);
   }
 
-  /**
-   * Unified Stage-Gated Media File Downloader with Non-Zero File Size Verification.
-   * Downloads requested format directly to disk, validates file existence and non-zero byte count,
-   * and logs full diagnostics.
-   */
   static async downloadMediaToFile(
     rawUrl: string,
     formatId: string,
@@ -363,7 +369,6 @@ export class YtDlpWrapper {
     const extraArgs = ['--user-agent', userAgent, '--referer', 'https://www.google.com/'];
     if (cookiePath) extraArgs.push('--cookies', cookiePath);
 
-    // Target format formatting
     let targetFormat = formatId;
     const requiresMux = targetFormat.includes('+');
 
@@ -387,20 +392,17 @@ export class YtDlpWrapper {
     console.log(`  Command: ${resolved.command} ${args.join(' ')}`);
 
     try {
-      const { stderr, stdout } = await execFileAsync(resolved.command, args, { timeout: 180000 });
+      const { stderr } = await execFileAsync(resolved.command, args, { timeout: 180000 });
       const durationMs = Date.now() - startTime;
 
-      // STAGE 1: Verify file existence
       if (!fs.existsSync(targetPath)) {
-        console.error(`[MediaHub Download Error] Target file was not created by yt-dlp.`);
-        console.error(`  Stderr: ${stderr}`);
+        console.error(`[MediaHub Download Error] Target file was not created by yt-dlp. Stderr: ${stderr}`);
         throw new DownloaderError(
           'DOWNLOAD_FILE_NOT_CREATED',
           `yt-dlp completed execution but output file '${targetPath}' was not created. Stderr: ${stderr}`
         );
       }
 
-      // STAGE 2: Verify non-zero file size
       const stat = fs.statSync(targetPath);
       if (stat.size === 0) {
         console.error(`[MediaHub Download Error] Downloaded target file is 0 bytes.`);

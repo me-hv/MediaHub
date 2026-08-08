@@ -50,7 +50,7 @@ export class ExecutableResolver {
 
     for (const cand of candidates) {
       try {
-        const { stdout } = await execFileAsync(cand.command, [...cand.args, '--version'], { timeout: 4000 });
+        const { stdout } = await execFileAsync(cand.command, [...cand.args, '--version'], { timeout: 4000, shell: process.platform === 'win32' });
         const version = stdout.trim();
         if (version) {
           this.cachedYtDlp = {
@@ -84,11 +84,13 @@ export class ExecutableResolver {
       ...(process.env.FFMPEG_PATH ? [{ command: process.env.FFMPEG_PATH, args: [], displayPath: process.env.FFMPEG_PATH }] : []),
       { command: process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg', args: [], displayPath: 'ffmpeg' },
       { command: 'ffmpeg', args: [], displayPath: 'ffmpeg' },
+      { command: 'C:\\ffmpeg\\bin\\ffmpeg.exe', args: [], displayPath: 'C:\\ffmpeg\\bin\\ffmpeg.exe' },
+      { command: 'C:\\ffmpeg\\ffmpeg.exe', args: [], displayPath: 'C:\\ffmpeg\\ffmpeg.exe' },
     ];
 
     for (const cand of candidates) {
       try {
-        const { stdout } = await execFileAsync(cand.command, [...cand.args, '-version'], { timeout: 4000 });
+        const { stdout } = await execFileAsync(cand.command, [...cand.args, '-version'], { timeout: 4000, shell: process.platform === 'win32' });
         const match = stdout.match(/ffmpeg version ([^\s]+)/i);
         const version = match ? match[1] : 'detected';
         this.cachedFfmpeg = {
