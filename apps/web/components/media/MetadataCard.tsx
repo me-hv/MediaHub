@@ -279,7 +279,7 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
                 <p className="text-[11px] font-semibold text-[#9a9da5] uppercase tracking-wider flex items-center gap-1.5">
                   <Music className="w-3.5 h-3.5 text-[#6f737d]" /> Native Source Audio
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {originalAudioStreams.map(renderFormatButton)}
                 </div>
               </div>
@@ -290,14 +290,14 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
                 <p className="text-[11px] font-semibold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
                   <RefreshCw className="w-3.5 h-3.5 text-purple-400" /> Converted Audio Formats (FFmpeg)
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {convertedAudioFormats.map(renderFormatButton)}
                 </div>
               </div>
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             {currentFormats.length === 0 ? (
               <p className="text-xs text-[#6f737d] col-span-2 py-4 text-center">
                 No specific {activeTab} streams found. Try Combined formats.
