@@ -69,7 +69,7 @@ export class AudioController {
         normalizeLoudness,
       };
 
-      const { stream: transcodeStream, process: ffmpegProc } = FFmpegManager.createTranscodeProcess(stream, transcodeOpts);
+      const { stream: transcodeStream, process: ffmpegProc } = await FFmpegManager.createTranscodeProcess(stream, transcodeOpts);
 
       const webStream = new ReadableStream({
         start(controller) {

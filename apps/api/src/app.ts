@@ -17,6 +17,7 @@ import { globalQueueManager } from '@mediahub/queue';
 import { StorageFactory } from '@mediahub/storage';
 import { FeatureFlagService } from '@mediahub/flags';
 import { ExecutableResolver } from '@mediahub/downloader';
+import { FFmpegManager } from '@mediahub/audio';
 import type { UserPayload } from './middlewares/auth.middleware';
 
 export interface AppEnv {
@@ -85,6 +86,23 @@ app.get('/health', (c) => {
     phase: 'Phase 6 (Distributed Runtime Platform)',
     queue: globalQueueManager.getStats(),
     featureFlags: FeatureFlagService.getAllFlags(),
+    timestamp: new Date().toISOString(),
+    requestId,
+  });
+});
+
+// Dedicated FFmpeg Diagnostic Endpoint (Requirement 9)
+app.get('/health/ffmpeg', async (c) => {
+  const requestId = c.get('requestId') || 'req-unknown';
+  const ffmpeg = await ExecutableResolver.resolveFfmpeg(true);
+
+  return c.json({
+    success: true,
+    available: ffmpeg.available,
+    version: ffmpeg.version,
+    path: ffmpeg.command,
+    displayPath: ffmpeg.displayPath,
+    runtime: 'api',
     timestamp: new Date().toISOString(),
     requestId,
   });

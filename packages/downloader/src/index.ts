@@ -1,4 +1,4 @@
-export * from './interfaces/IDownloaderProvider';
+export type { ProviderResult, IDownloaderProvider } from './interfaces/IDownloaderProvider';
 export * from './factory/ProviderFactory';
 export * from './providers/YoutubeProvider';
 export * from './providers/YouTubeMusicProvider';

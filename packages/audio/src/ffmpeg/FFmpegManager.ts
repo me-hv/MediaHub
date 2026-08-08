@@ -2,20 +2,52 @@ import { execFile, spawn, ChildProcess } from 'node:child_process';
 import { Readable } from 'node:stream';
 import { promisify } from 'node:util';
 import fs from 'node:fs';
+import path from 'node:path';
 import { AudioTranscodeOptions } from '../types';
+import { ExecutableResolver } from '@mediahub/downloader';
 
 const execFileAsync = promisify(execFile);
 
 export class FFmpegManager {
-  static getFFmpegBinary(): string {
-    return process.env.FFMPEG_PATH || 'ffmpeg';
+  private static cachedBinaryPath: string | null = null;
+
+  static async resolveFFmpegBinary(): Promise<string> {
+    if (this.cachedBinaryPath) return this.cachedBinaryPath;
+
+    // 1. Explicit env variables
+    const customPath = process.env.MEDIAHUB_FFMPEG_PATH || process.env.FFMPEG_PATH;
+    if (customPath && fs.existsSync(customPath)) {
+      this.cachedBinaryPath = customPath;
+      return customPath;
+    }
+
+    // 2. ExecutableResolver candidate search
+    const resolved = await ExecutableResolver.resolveFfmpeg();
+    if (resolved.available && resolved.command) {
+      this.cachedBinaryPath = resolved.command;
+      return resolved.command;
+    }
+
+    // 3. Fallback
+    this.cachedBinaryPath = customPath || 'ffmpeg';
+    return this.cachedBinaryPath;
   }
 
-  static isFFmpegAvailable(): Promise<boolean> {
-    const binary = this.getFFmpegBinary();
-    return execFileAsync(binary, ['-version'])
-      .then(() => true)
-      .catch(() => false);
+  static getFFmpegBinary(): string {
+    const customPath = process.env.MEDIAHUB_FFMPEG_PATH || process.env.FFMPEG_PATH;
+    if (customPath && fs.existsSync(customPath)) return customPath;
+    if (this.cachedBinaryPath) return this.cachedBinaryPath;
+    return 'ffmpeg';
+  }
+
+  static async isFFmpegAvailable(): Promise<boolean> {
+    try {
+      const binary = await this.resolveFFmpegBinary();
+      const { stdout } = await execFileAsync(binary, ['-version'], { timeout: 4000 });
+      return stdout.includes('ffmpeg version') || stdout.length > 0;
+    } catch {
+      return false;
+    }
   }
 
   static buildFFmpegFileArgs(options: AudioTranscodeOptions, sourceCodec?: string): string[] {
@@ -156,7 +188,7 @@ export class FFmpegManager {
       throw new Error(`FFmpeg input file at '${inputPath}' is 0 bytes.`);
     }
 
-    const binary = this.getFFmpegBinary();
+    const binary = await this.resolveFFmpegBinary();
     const codecArgs = this.buildFFmpegFileArgs(options, sourceCodec);
     const args = ['-y', '-i', inputPath, ...codecArgs, outputPath];
 
@@ -190,14 +222,19 @@ export class FFmpegManager {
     }
   }
 
-  static createTranscodeProcess(inputStream: Readable, options: AudioTranscodeOptions, sourceCodec?: string): { stream: Readable; process: ChildProcess } {
-    const binary = this.getFFmpegBinary();
+  static async createTranscodeProcess(
+    inputStream: Readable,
+    options: AudioTranscodeOptions,
+    sourceCodec?: string
+  ): Promise<{ stream: Readable; process: ChildProcess }> {
+    const binary = await this.resolveFFmpegBinary();
     const args = this.buildFFmpegArgs(options, sourceCodec);
 
+    console.log(`[FFmpeg Stream Transcode] Spawning: ${binary} ${args.join(' ')}`);
     const child = spawn(binary, args, { stdio: ['pipe', 'pipe', 'pipe'] });
 
     child.on('error', (err) => {
-      console.warn(`[FFmpegManager Warning] Process error spawning '${binary}': ${err.message}`);
+      console.warn(`[FFmpegManager Error] Failed to spawn FFmpeg binary '${binary}': ${err.message}`);
     });
 
     inputStream.on('error', (err) => {

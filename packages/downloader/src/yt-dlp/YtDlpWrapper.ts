@@ -117,6 +117,24 @@ function resolveCookiePath(): string | undefined {
   return undefined;
 }
 
+async function getEnhancedEnv(): Promise<{ env: NodeJS.ProcessEnv; ffmpegLocation?: string }> {
+  const ffmpegRes = await ExecutableResolver.resolveFfmpeg();
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  let ffmpegLocation: string | undefined = undefined;
+
+  if (ffmpegRes.available && ffmpegRes.command) {
+    ffmpegLocation = ffmpegRes.command;
+    const ffmpegDir = path.dirname(ffmpegRes.command);
+    const pathKey = Object.keys(env).find((k) => k.toLowerCase() === 'path') || 'PATH';
+    const currentPath = env[pathKey] || '';
+    if (!currentPath.includes(ffmpegDir)) {
+      env[pathKey] = `${ffmpegDir}${path.delimiter}${currentPath}`;
+    }
+  }
+
+  return { env, ffmpegLocation };
+}
+
 function classifyError(url: string, rawError: string): DownloaderError {
   const err = (rawError || '').toLowerCase();
   const isYouTube = url.includes('youtube.com') || url.includes('youtu.be') || url.includes('music.youtube.com');
@@ -175,7 +193,6 @@ function classifyError(url: string, rawError: string): DownloaderError {
     return new DownloaderError('NETWORK_ERROR', 'Unable to reach the media provider. Please check network status.', undefined, rawError);
   }
 
-  // Preserve underlying error detail cleanly instead of blind generic fallback
   const firstErrorLine = rawError
     ? rawError
         .split('\n')
@@ -205,6 +222,7 @@ export class YtDlpWrapper {
     const url = normalizeMediaUrl(rawUrl);
     const platform = detectPlatform(url);
     const cookiePath = resolveCookiePath();
+    const { env, ffmpegLocation } = await getEnhancedEnv();
 
     const timeoutMs = parseInt(process.env.YTDLP_TIMEOUT || '30000', 10);
     const maxRetries = 3;
@@ -224,19 +242,28 @@ export class YtDlpWrapper {
       const userAgent = getRandomUserAgent();
       const extraArgs: string[] = ['--user-agent', userAgent];
 
+      if (platform === 'YOUTUBE' || platform === 'YOUTUBE_MUSIC') {
+        extraArgs.push('--extractor-args', 'youtube:player_client=android,web');
+      }
+
       if (cookiePath) {
         extraArgs.push('--cookies', cookiePath);
       } else {
         extraArgs.push('--referer', 'https://www.google.com/', '--add-header', 'Accept-Language: en-US,en;q=0.9');
       }
 
-      const args = [...resolved.args, ...extraArgs, '--dump-json', '--no-warnings', '--no-playlist', url];
+      if (ffmpegLocation) {
+        extraArgs.push('--ffmpeg-location', ffmpegLocation);
+      }
+
+      const args = [...resolved.args, '--no-playlist', ...extraArgs, '--dump-json', '--no-warnings', url];
       const startTime = Date.now();
 
       try {
         const { stdout } = await execFileAsync(resolved.command, args, {
           maxBuffer: 30 * 1024 * 1024,
           timeout: timeoutMs,
+          env,
         });
 
         const durationMs = Date.now() - startTime;
@@ -285,15 +312,17 @@ export class YtDlpWrapper {
     const url = normalizeMediaUrl(playlistUrl);
     const userAgent = getRandomUserAgent();
     const cookiePath = resolveCookiePath();
+    const { env, ffmpegLocation } = await getEnhancedEnv();
 
     const extraArgs = ['--user-agent', userAgent];
     if (cookiePath) extraArgs.push('--cookies', cookiePath);
+    if (ffmpegLocation) extraArgs.push('--ffmpeg-location', ffmpegLocation);
 
     try {
       const { stdout } = await execFileAsync(
         resolved.command,
-        [...resolved.args, ...extraArgs, '--flat-playlist', '--dump-single-json', '--no-warnings', url],
-        { maxBuffer: 30 * 1024 * 1024 }
+        [...resolved.args, '--flat-playlist', ...extraArgs, '--dump-single-json', '--no-warnings', url],
+        { maxBuffer: 30 * 1024 * 1024, env }
       );
       const json = JSON.parse(stdout) as YtDlpDumpJsonOutput;
       const entries = json.entries || [];
@@ -365,18 +394,23 @@ export class YtDlpWrapper {
     const platform = detectPlatform(url);
     const userAgent = getRandomUserAgent();
     const cookiePath = resolveCookiePath();
+    const { env, ffmpegLocation } = await getEnhancedEnv();
 
     const extraArgs = ['--user-agent', userAgent, '--referer', 'https://www.google.com/'];
+    if (platform === 'YOUTUBE' || platform === 'YOUTUBE_MUSIC') {
+      extraArgs.push('--extractor-args', 'youtube:player_client=android,web');
+    }
     if (cookiePath) extraArgs.push('--cookies', cookiePath);
+    if (ffmpegLocation) extraArgs.push('--ffmpeg-location', ffmpegLocation);
 
     let targetFormat = formatId;
     const requiresMux = targetFormat.includes('+');
 
-    const args = [...resolved.args, ...extraArgs, '-f', targetFormat];
+    const args = [...resolved.args, '--no-playlist', ...extraArgs, '-f', targetFormat];
     if (requiresMux) {
       args.push('--merge-output-format', 'mp4');
     }
-    args.push('-o', targetPath, '--no-warnings', '--no-playlist', url);
+    args.push('-o', targetPath, '--no-warnings', url);
 
     const dir = path.dirname(targetPath);
     if (!fs.existsSync(dir)) {
@@ -392,7 +426,7 @@ export class YtDlpWrapper {
     console.log(`  Command: ${resolved.command} ${args.join(' ')}`);
 
     try {
-      const { stderr } = await execFileAsync(resolved.command, args, { timeout: 180000 });
+      const { stderr } = await execFileAsync(resolved.command, args, { timeout: 180000, env });
       const durationMs = Date.now() - startTime;
 
       if (!fs.existsSync(targetPath)) {
@@ -435,22 +469,28 @@ export class YtDlpWrapper {
     }
 
     const url = normalizeMediaUrl(rawUrl);
+    const platform = detectPlatform(url);
     const userAgent = getRandomUserAgent();
     const cookiePath = resolveCookiePath();
+    const { env, ffmpegLocation } = await getEnhancedEnv();
 
     const extraArgs = ['--user-agent', userAgent, '--referer', 'https://www.google.com/'];
+    if (platform === 'YOUTUBE' || platform === 'YOUTUBE_MUSIC') {
+      extraArgs.push('--extractor-args', 'youtube:player_client=android,web');
+    }
     if (cookiePath) extraArgs.push('--cookies', cookiePath);
+    if (ffmpegLocation) extraArgs.push('--ffmpeg-location', ffmpegLocation);
 
     let targetFormat = formatId;
     const isMuxFormat = targetFormat.includes('+');
 
-    const args = [...resolved.args, ...extraArgs, '-f', targetFormat];
+    const args = [...resolved.args, '--no-playlist', ...extraArgs, '-f', targetFormat];
     if (isMuxFormat) {
       args.push('--merge-output-format', 'mp4');
     }
-    args.push('-o', '-', '--no-warnings', '--no-playlist', url);
+    args.push('-o', '-', '--no-warnings', url);
 
-    const child = spawn(resolved.command, args);
+    const child = spawn(resolved.command, args, { env });
     return {
       stream: child.stdout,
       process: child,
@@ -464,14 +504,20 @@ export class YtDlpWrapper {
     }
 
     const url = normalizeMediaUrl(rawUrl);
+    const platform = detectPlatform(url);
     const userAgent = getRandomUserAgent();
     const cookiePath = resolveCookiePath();
+    const { env, ffmpegLocation } = await getEnhancedEnv();
 
     const extraArgs = ['--user-agent', userAgent, '--referer', 'https://www.google.com/'];
+    if (platform === 'YOUTUBE' || platform === 'YOUTUBE_MUSIC') {
+      extraArgs.push('--extractor-args', 'youtube:player_client=android,web');
+    }
     if (cookiePath) extraArgs.push('--cookies', cookiePath);
+    if (ffmpegLocation) extraArgs.push('--ffmpeg-location', ffmpegLocation);
 
-    const args = [...resolved.args, ...extraArgs, '-f', 'bestaudio/best', '-o', '-', '--no-warnings', '--no-playlist', url];
-    const child = spawn(resolved.command, args);
+    const args = [...resolved.args, '--no-playlist', ...extraArgs, '-f', 'bestaudio/best', '-o', '-', '--no-warnings', url];
+    const child = spawn(resolved.command, args, { env });
     return {
       stream: child.stdout,
       process: child,
