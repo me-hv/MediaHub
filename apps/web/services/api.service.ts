@@ -10,9 +10,23 @@ export class ApiService {
       body: JSON.stringify({ url }),
       signal,
     });
+
     const json = (await res.json()) as APIResponse<AnalyzeMediaResponseData>;
-    if (!res.ok || !json.success) throw new Error(json.success === false ? json.message : 'Failed to analyze URL');
-    return json.data.metadata;
+
+    if (!res.ok || !json.success) {
+      const errorMsg = json.success === false ? json.message : `Server error (HTTP ${res.status})`;
+      throw new Error(errorMsg);
+    }
+
+    // Resilience: Support both nested `{ data: { metadata: ... } }` and direct `{ data: ... }`
+    const dataAny = json.data as any;
+    const metadata: MediaMetadata = dataAny?.metadata || dataAny;
+
+    if (!metadata || !metadata.title || !metadata.qualities) {
+      throw new Error('Server returned malformed or incomplete media metadata.');
+    }
+
+    return metadata;
   }
 
   static async downloadMedia(url: string, formatId: string, signal?: AbortSignal): Promise<Blob> {

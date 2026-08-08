@@ -27,13 +27,20 @@ export class MediaController {
       return c.json({ success: false, code: 'INVALID_URL', message: validation.error, timestamp: new Date().toISOString(), requestId }, 400);
     }
 
-    const provider = ProviderFactory.getProvider(validation.url);
+    const url = validation.url;
+    const platform = detectPlatform(url);
+
+    console.log(`[ANALYZE] Request Received (${requestId}) | URL: ${url} | Detected Platform: ${platform}`);
+
+    const provider = ProviderFactory.getProvider(url);
 
     try {
-      const result = await provider.extractMetadataResult!(validation.url, validation.hash);
+      console.log(`[ANALYZE] Executing metadata extraction via provider: ${provider.name}`);
+      const result = await provider.extractMetadataResult!(url, validation.hash);
 
       if (!result.success) {
         const error = result.error as DownloaderError;
+        console.error(`[ANALYZE] Extraction failed for ${url}: ${error.message} (Code: ${error.code})`);
         return c.json(
           {
             success: false,
@@ -47,25 +54,31 @@ export class MediaController {
         );
       }
 
+      console.log(`[ANALYZE] Metadata Extracted Successfully: "${result.metadata.title}" | Formats: Video(${result.metadata.qualities.video.length}), Audio(${result.metadata.qualities.audio.length}), Combined(${result.metadata.qualities.combined.length})`);
+
       await HistoryService.addHistory({
         userId: user?.id,
         urlHash: validation.hash,
-        rawUrl: validation.url,
+        rawUrl: url,
         title: result.metadata.title,
         platform: result.metadata.platform,
         formatId: 'analyze',
         status: 'SUCCESS',
       });
 
+      // Maintain exact contract: { success: true, data: { metadata: result.metadata } }
       return c.json({
         success: true,
-        data: result.metadata,
+        data: {
+          metadata: result.metadata,
+        },
         timestamp: new Date().toISOString(),
         requestId,
       });
     } catch (err: any) {
+      console.error(`[ANALYZE] Unexpected Server Error during analysis: ${err.message}`);
       logger.error({ error: err.message, requestId }, 'Error analyzing media');
-      return c.json({ success: false, code: 'ANALYSIS_FAILED', message: err.message, timestamp: new Date().toISOString(), requestId }, 500);
+      return c.json({ success: false, code: 'ANALYSIS_FAILED', message: err.message || 'An unexpected server error occurred.', timestamp: new Date().toISOString(), requestId }, 500);
     }
   }
 
