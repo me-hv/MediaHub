@@ -3,7 +3,7 @@
 import React, { useState, useRef } from 'react';
 import { detectPlatform, sanitizeAndValidateUrl } from '@mediahub/utils';
 import { PlatformBadge } from './PlatformBadge';
-import { Search, ArrowRight, Loader2, Clipboard } from 'lucide-react';
+import { Search, ArrowRight, Loader2, Link as LinkIcon } from 'lucide-react';
 
 interface UrlInputFormProps {
   onAnalyze: (options: { url: string; source: 'Paste' | 'Analyze Button' | 'Enter Key' | 'Auto' }) => void;
@@ -17,7 +17,7 @@ export function UrlInputForm({ onAnalyze, isLoading }: UrlInputFormProps) {
 
   const platform = detectPlatform(url);
 
-  // 1. Explicit Paste Handler (Triggers immediate analysis when user pastes a link)
+  // Explicit Paste Handler
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     const pastedText = e.clipboardData.getData('text');
     if (!pastedText) return;
@@ -37,7 +37,7 @@ export function UrlInputForm({ onAnalyze, isLoading }: UrlInputFormProps) {
     if (validationError) setValidationError(null);
   };
 
-  // 2. Explicit Form Submission Handler (Triggers when user clicks Analyze button or hits Enter)
+  // Form Submission Handler
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (isLoading) return;
@@ -53,66 +53,63 @@ export function UrlInputForm({ onAnalyze, isLoading }: UrlInputFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="w-full max-w-3xl mx-auto space-y-3">
-      <div className="relative group">
-        <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl blur opacity-30 group-hover:opacity-60 transition duration-500"></div>
-        <div className="relative flex items-center bg-slate-950/90 border border-white/10 rounded-2xl p-2 shadow-2xl backdrop-blur-xl">
-          <div className="pl-3 pr-2 text-slate-400">
-            <Search className="w-5 h-5" />
-          </div>
-
-          <input
-            type="text"
-            value={url}
-            onChange={handleChange}
-            onPaste={handlePaste}
-            placeholder="Paste a media link (YouTube, Instagram, X, TikTok, Reddit...)"
-            disabled={isLoading}
-            className="w-full bg-transparent text-white placeholder-slate-500 text-sm sm:text-base focus:outline-none px-2 py-3 disabled:opacity-50"
-          />
-
-          {url.trim() && (
-            <div className="hidden sm:block mr-2">
-              <PlatformBadge platform={platform} />
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={isLoading || !url.trim()}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white font-medium text-sm px-5 py-3 rounded-xl transition-all duration-200 shrink-0 shadow-lg shadow-indigo-600/30"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Analyzing</span>
-              </>
-            ) : (
-              <>
-                <span>Analyze</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
+    <form onSubmit={handleSubmit} className="w-full max-w-3xl mx-auto space-y-2.5">
+      <div className="relative flex items-center bg-[#0d0f14] border border-white/10 rounded-lg p-1.5 focus-within:border-indigo-500/50 transition-colors shadow-lg">
+        <div className="pl-3 pr-2 text-slate-400">
+          <Search className="w-4 h-4 text-slate-400" />
         </div>
+
+        <input
+          type="text"
+          value={url}
+          onChange={handleChange}
+          onPaste={handlePaste}
+          placeholder="Paste media URL (YouTube, Music, Instagram, X/Twitter, TikTok, Reddit...)"
+          disabled={isLoading}
+          className="w-full bg-transparent text-white placeholder-slate-500 text-xs sm:text-sm focus:outline-none px-2 py-2 disabled:opacity-50 font-sans"
+        />
+
+        {url.trim() && (
+          <div className="hidden sm:block mr-2">
+            <PlatformBadge platform={platform} />
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={isLoading || !url.trim()}
+          className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white font-medium text-xs px-4 py-2 rounded-md transition-colors shrink-0 shadow-sm"
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span>Analyzing...</span>
+            </>
+          ) : (
+            <>
+              <span>Analyze</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </>
+          )}
+        </button>
       </div>
 
       {validationError && (
-        <p className="text-xs text-rose-400 pl-4 font-medium animate-in fade-in slide-in-from-top-1">
+        <p className="text-xs text-rose-400 pl-3 font-medium">
           {validationError}
         </p>
       )}
 
-      <div className="flex items-center justify-between px-2 text-xs text-slate-500">
+      <div className="flex items-center justify-between px-1 text-[11px] text-slate-400">
         <span className="flex items-center gap-1">
-          <Clipboard className="w-3 h-3" /> Auto-detects YouTube, Instagram, X, TikTok, Reddit, Facebook...
+          <LinkIcon className="w-3 h-3 text-slate-500" /> Auto-detects supported platform links
         </span>
-        <div className="flex gap-3">
+        <div className="hidden sm:flex gap-2.5 text-slate-400 font-mono">
           <span>YouTube</span>
-          <span>Instagram</span>
+          <span>YouTube Music</span>
           <span>X / Twitter</span>
+          <span>Instagram</span>
           <span>TikTok</span>
-          <span>Reddit</span>
         </div>
       </div>
     </form>
