@@ -3,22 +3,24 @@
 @tailwind utilities;
 
 :root {
-  --background: #08090c;
-  --card: #0d0f14;
-  --card-hover: #13161c;
-  --border: rgba(255, 255, 255, 0.07);
+  --background: #17181c;
+  --sidebar: #121316;
+  --topbar: #151619;
+  --card: #1c1e22;
+  --card-hover: #22252a;
+  --border: #2a2d32;
   --accent: #6366f1;
   --accent-hover: #4f46e5;
-  --text-primary: #f8fafc;
-  --text-muted: #8a94a6;
+  --text-primary: #f2f3f5;
+  --text-muted: #9a9da5;
   --radius: 8px;
 
   /* Restrained Neutral Scrollbar CSS Variables */
-  --scrollbar-track: rgba(255, 255, 255, 0.01);
-  --scrollbar-thumb: rgba(255, 255, 255, 0.18);
-  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.32);
-  --scrollbar-thumb-active: rgba(255, 255, 255, 0.45);
-  --scrollbar-corner: #08090c;
+  --scrollbar-track: #17181c;
+  --scrollbar-thumb: #2a2d32;
+  --scrollbar-thumb-hover: #3d4149;
+  --scrollbar-thumb-active: #505560;
+  --scrollbar-corner: #17181c;
 }
 
 /* Firefox Scrollbar Standard */
@@ -35,7 +37,6 @@
 
 ::-webkit-scrollbar-track {
   background: var(--scrollbar-track);
-  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -99,20 +100,11 @@ body {
 .glass-panel {
   background: var(--card);
   border: 1px solid var(--border);
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.4);
 }
 
 .ambient-gradient {
-  position: absolute;
-  top: -5%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 600px;
-  height: 300px;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.05) 0%, rgba(0, 0, 0, 0) 70%);
-  filter: blur(50px);
-  pointer-events: none;
-  z-index: 0;
+  display: none;
 }
 
 @keyframes shimmer {

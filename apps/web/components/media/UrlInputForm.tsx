@@ -54,9 +54,9 @@ export function UrlInputForm({ onAnalyze, isLoading }: UrlInputFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="w-full max-w-3xl mx-auto space-y-2.5">
-      <div className="relative flex items-center bg-[#0d0f14] border border-white/10 rounded-lg p-1.5 focus-within:border-indigo-500/50 transition-colors shadow-lg">
-        <div className="pl-3 pr-2 text-slate-400">
-          <Search className="w-4 h-4 text-slate-400" />
+      <div className="relative flex items-center bg-[#1c1e22] border border-[#2a2d32] rounded-lg p-1.5 focus-within:border-indigo-500/50 transition-colors shadow-lg">
+        <div className="pl-3 pr-2 text-[#9a9da5]">
+          <Search className="w-4 h-4 text-[#6f737d]" />
         </div>
 
         <input
@@ -66,7 +66,7 @@ export function UrlInputForm({ onAnalyze, isLoading }: UrlInputFormProps) {
           onPaste={handlePaste}
           placeholder="Paste media URL (YouTube, Music, Instagram, X/Twitter, TikTok, Reddit...)"
           disabled={isLoading}
-          className="w-full bg-transparent text-white placeholder-slate-500 text-xs sm:text-sm focus:outline-none px-2 py-2 disabled:opacity-50 font-sans"
+          className="w-full bg-transparent text-[#f2f3f5] placeholder-[#6f737d] text-xs sm:text-sm focus:outline-none px-2 py-2 disabled:opacity-50 font-sans"
         />
 
         {url.trim() && (
@@ -100,11 +100,11 @@ export function UrlInputForm({ onAnalyze, isLoading }: UrlInputFormProps) {
         </p>
       )}
 
-      <div className="flex items-center justify-between px-1 text-[11px] text-slate-400">
+      <div className="flex items-center justify-between px-1 text-[11px] text-[#9a9da5]">
         <span className="flex items-center gap-1">
-          <LinkIcon className="w-3 h-3 text-slate-500" /> Auto-detects supported platform links
+          <LinkIcon className="w-3 h-3 text-[#6f737d]" /> Auto-detects supported platform links
         </span>
-        <div className="hidden sm:flex gap-2.5 text-slate-400 font-mono">
+        <div className="hidden sm:flex gap-2.5 text-[#9a9da5] font-mono">
           <span>YouTube</span>
           <span>YouTube Music</span>
           <span>X / Twitter</span>

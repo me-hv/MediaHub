@@ -26,19 +26,19 @@ export function Sidebar() {
     <motion.aside
       initial={false}
       animate={{
-        width: collapsed ? 72 : 260,
+        width: collapsed ? 64 : 230,
       }}
       transition={{
-        duration: 0.25,
-        ease: [0.4, 0, 0.2, 1],
+        duration: 0.2,
+        ease: [0.25, 0.1, 0.25, 1.0],
       }}
-      className="hidden lg:flex flex-col h-screen sticky top-0 bg-slate-950/90 backdrop-blur-xl border-r border-white/10 z-30 shrink-0 select-none overflow-hidden"
+      className="hidden lg:flex flex-col h-screen sticky top-0 bg-[#121316] border-r border-[#2a2d32] z-30 shrink-0 select-none overflow-hidden"
     >
       {/* Top Header & Brand */}
       <SidebarHeader />
 
       {/* Navigation Sections */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 space-y-4 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-2.5 space-y-3 custom-scrollbar">
         {/* Core Tools */}
         <SidebarSection title="Core Tools">
           <SidebarItem
@@ -100,7 +100,7 @@ export function Sidebar() {
         </SidebarSection>
       </div>
 
-      {/* Sidebar Footer with Storage & User Card */}
+      {/* Sidebar Footer with User Card */}
       <SidebarFooter />
     </motion.aside>
   );

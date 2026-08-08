@@ -9,8 +9,6 @@ import {
   AlertCircle,
   XCircle,
   X,
-  ArrowDownToLine,
-  ExternalLink,
 } from 'lucide-react';
 import { formatBytes } from '@mediahub/utils';
 
@@ -41,11 +39,11 @@ export function DownloadProgressPanel({ job: propJob, onDismiss }: DownloadProgr
   };
 
   return (
-    <div className="w-full bg-[#0d0f14] border border-white/10 rounded-lg p-4 space-y-4 text-slate-200 text-xs shadow-lg transition-all">
+    <div className="w-full bg-[#1c1e22] border border-[#2a2d32] rounded-lg p-4 space-y-4 text-[#f2f3f5] text-xs shadow-lg transition-all">
       {/* Header Status Bar */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="flex items-center justify-center w-6 h-6 rounded-md bg-slate-900 border border-white/10 shrink-0">
+          <div className="flex items-center justify-center w-6 h-6 rounded bg-[#121316] border border-[#2a2d32] shrink-0">
             {isProcessing ? (
               job.stage === 'CONVERTING_FFMPEG' ? (
                 <RefreshCw className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
@@ -57,12 +55,12 @@ export function DownloadProgressPanel({ job: propJob, onDismiss }: DownloadProgr
             ) : isFailed ? (
               <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
             ) : (
-              <XCircle className="w-3.5 h-3.5 text-slate-400" />
+              <XCircle className="w-3.5 h-3.5 text-[#9a9da5]" />
             )}
           </div>
 
           <div className="min-w-0">
-            <h4 className="text-xs font-semibold text-white truncate flex items-center gap-2">
+            <h4 className="text-xs font-semibold text-[#f2f3f5] truncate flex items-center gap-2">
               {isProcessing
                 ? job.stage === 'CONVERTING_FFMPEG'
                   ? 'Converting media'
@@ -73,7 +71,7 @@ export function DownloadProgressPanel({ job: propJob, onDismiss }: DownloadProgr
                 ? 'Download failed'
                 : 'Download cancelled'}
             </h4>
-            <p className="text-[11px] text-slate-400 truncate mt-0.5">{job.title}</p>
+            <p className="text-[11px] text-[#9a9da5] truncate mt-0.5">{job.title}</p>
           </div>
         </div>
 
@@ -81,7 +79,7 @@ export function DownloadProgressPanel({ job: propJob, onDismiss }: DownloadProgr
           <button
             onClick={handleDismiss}
             aria-label="Dismiss notice"
-            className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800 transition-colors shrink-0"
+            className="text-[#9a9da5] hover:text-[#f2f3f5] p-1 rounded hover:bg-[#22252a] transition-colors shrink-0"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -91,30 +89,30 @@ export function DownloadProgressPanel({ job: propJob, onDismiss }: DownloadProgr
       {/* Progress Indicator for Active Processing */}
       {isProcessing && (
         <div className="space-y-1.5 pt-1">
-          <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
+          <div className="flex items-center justify-between text-[11px] text-[#9a9da5] font-mono">
             <span>{job.stageMessage}</span>
             <span>{job.estimatedSize ? `Est. ${job.estimatedSize}` : ''}</span>
           </div>
 
-          <div className="relative w-full h-1.5 rounded-full bg-slate-900 overflow-hidden border border-white/5">
+          <div className="relative w-full h-1.5 rounded-full bg-[#121316] overflow-hidden border border-[#2a2d32]">
             <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-indigo-500/30 via-indigo-500 to-indigo-500/30 animate-shimmer rounded-full" />
           </div>
         </div>
       )}
 
       {/* Structured Technical Metadata Summary */}
-      <div className="grid grid-cols-3 gap-2 bg-[#12151c] p-2.5 rounded-md border border-white/5 font-mono text-[11px] text-slate-400">
+      <div className="grid grid-cols-3 gap-2 bg-[#121316] p-2.5 rounded border border-[#2a2d32] font-mono text-[11px] text-[#9a9da5]">
         <div>
-          <span className="text-slate-500 block text-[10px]">Format</span>
-          <span className="text-white font-medium">{job.formatLabel}</span>
+          <span className="text-[#6f737d] block text-[10px]">Format</span>
+          <span className="text-[#f2f3f5] font-medium">{job.formatLabel}</span>
         </div>
         <div>
-          <span className="text-slate-500 block text-[10px]">Container</span>
-          <span className="text-white font-medium">.{job.ext.toUpperCase()}</span>
+          <span className="text-[#6f737d] block text-[10px]">Container</span>
+          <span className="text-[#f2f3f5] font-medium">.{job.ext.toUpperCase()}</span>
         </div>
         <div>
-          <span className="text-slate-500 block text-[10px]">Pipeline</span>
-          <span className="text-slate-300 font-medium">{job.requiresConversion ? 'FFmpeg Transcode' : 'Direct Stream'}</span>
+          <span className="text-[#6f737d] block text-[10px]">Pipeline</span>
+          <span className="text-[#9a9da5] font-medium">{job.requiresConversion ? 'FFmpeg Transcode' : 'Direct Stream'}</span>
         </div>
       </div>
 
@@ -127,16 +125,16 @@ export function DownloadProgressPanel({ job: propJob, onDismiss }: DownloadProgr
       )}
 
       {/* Action Footer */}
-      <div className="flex items-center justify-between pt-1 border-t border-white/5">
+      <div className="flex items-center justify-between pt-1 border-t border-[#2a2d32]">
         {isProcessing ? (
           <>
-            <span className="text-[11px] text-slate-400 font-mono flex items-center gap-1.5">
+            <span className="text-[11px] text-[#9a9da5] font-mono flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
               Processing stream...
             </span>
             <button
               onClick={cancelDownload}
-              className="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10 text-xs font-medium transition-colors"
+              className="px-3 py-1 rounded bg-[#22252a] hover:bg-[#2a2d32] text-[#f2f3f5] border border-[#2a2d32] text-xs font-medium transition-colors"
             >
               Cancel
             </button>
@@ -149,7 +147,7 @@ export function DownloadProgressPanel({ job: propJob, onDismiss }: DownloadProgr
             </span>
             <button
               onClick={handleDismiss}
-              className="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10 text-xs font-medium transition-colors"
+              className="px-3 py-1 rounded bg-[#22252a] hover:bg-[#2a2d32] text-[#f2f3f5] border border-[#2a2d32] text-xs font-medium transition-colors"
             >
               Dismiss
             </button>
@@ -158,7 +156,7 @@ export function DownloadProgressPanel({ job: propJob, onDismiss }: DownloadProgr
           <div className="w-full flex justify-end">
             <button
               onClick={handleDismiss}
-              className="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10 text-xs font-medium transition-colors"
+              className="px-3 py-1 rounded bg-[#22252a] hover:bg-[#2a2d32] text-[#f2f3f5] border border-[#2a2d32] text-xs font-medium transition-colors"
             >
               Close
             </button>

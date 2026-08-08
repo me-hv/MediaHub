@@ -13,13 +13,10 @@ import {
   User,
   Film,
   Music,
-  Check,
   Eye,
   Calendar,
   Info,
   Cpu,
-  Heart,
-  Monitor,
   RefreshCw,
 } from 'lucide-react';
 
@@ -110,14 +107,14 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
         onClick={() => setSelectedFormatId(fmt.formatId)}
         className={`flex items-center justify-between p-3 rounded-lg border text-left transition-all ${
           isSelected
-            ? 'bg-[#12151c] border-indigo-500/50 text-white'
-            : 'bg-[#0d0f14]/60 border-white/5 text-slate-300 hover:bg-[#13161c]'
+            ? 'bg-[#22252a] border-indigo-500/60 text-white'
+            : 'bg-[#121316]/80 border-[#2a2d32] text-[#9a9da5] hover:bg-[#22252a] hover:text-[#f2f3f5]'
         }`}
       >
         <div className="flex items-center gap-2.5 min-w-0">
           <div
             className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 ${
-              isSelected ? 'border-indigo-400 bg-indigo-500/20' : 'border-slate-600'
+              isSelected ? 'border-indigo-400 bg-indigo-500/20' : 'border-[#6f737d]'
             }`}
           >
             {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />}
@@ -127,22 +124,22 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-xs font-medium text-white">{resLabel}</span>
               {fmt.hasVideo && (
-                <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded font-mono">
+                <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded font-mono border border-emerald-500/20">
                   Audio Included
                 </span>
               )}
               {fmt.requiresConversion && (
-                <span className="text-[10px] text-purple-300 bg-purple-500/10 px-1.5 py-0.2 rounded font-mono">
+                <span className="text-[10px] text-purple-300 bg-purple-500/10 px-1.5 py-0.2 rounded font-mono border border-purple-500/20">
                   Transcode
                 </span>
               )}
               {fmt.hdr && (
-                <span className="text-[10px] text-amber-300 bg-amber-500/10 px-1.5 py-0.2 rounded font-mono">
+                <span className="text-[10px] text-amber-300 bg-amber-500/10 px-1.5 py-0.2 rounded font-mono border border-amber-500/20">
                   HDR
                 </span>
               )}
             </div>
-            <p className="text-[10px] font-mono text-slate-400 truncate mt-0.5">
+            <p className="text-[10px] font-mono text-[#9a9da5] truncate mt-0.5">
               .{fmt.ext} • {fmt.vcodec ? fmt.vcodec.split('.')[0] : 'audio'}
               {fmt.acodec && fmt.acodec !== 'none' ? `/${fmt.acodec.split('.')[0]}` : ''}{' '}
               {fmt.tbr ? `• ${fmt.tbr} kbps` : ''}
@@ -150,7 +147,7 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
           </div>
         </div>
 
-        <span className="text-xs font-mono text-slate-400 shrink-0 ml-2">
+        <span className="text-xs font-mono text-[#9a9da5] shrink-0 ml-2">
           {getFormatSizeDisplay(fmt)}
         </span>
       </button>
@@ -166,11 +163,11 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
       activeJob.stage === 'STREAMING');
 
   return (
-    <div className="w-full max-w-3xl mx-auto bg-[#0d0f14] border border-white/10 rounded-xl p-5 space-y-5 shadow-xl">
+    <div className="w-full max-w-3xl mx-auto bg-[#1c1e22] border border-[#2a2d32] rounded-xl p-5 space-y-5 shadow-lg">
       {/* Top Media Details */}
       <div className="flex flex-col md:flex-row gap-5">
         {/* Thumbnail */}
-        <div className="relative w-full md:w-64 h-40 rounded-lg overflow-hidden bg-slate-900 border border-white/10 shrink-0">
+        <div className="relative w-full md:w-64 h-40 rounded-lg overflow-hidden bg-[#121316] border border-[#2a2d32] shrink-0">
           {metadata.thumbnail ? (
             <img
               src={metadata.thumbnail}
@@ -178,13 +175,13 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
               className="w-full h-full object-cover"
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-slate-600">
+            <div className="w-full h-full flex items-center justify-center text-[#6f737d]">
               <Film className="w-8 h-8" />
             </div>
           )}
           {metadata.duration && (
-            <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md px-1.5 py-0.5 rounded text-[11px] font-mono text-white flex items-center gap-1">
-              <Clock className="w-3 h-3 text-slate-400" />
+            <div className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md px-1.5 py-0.5 rounded text-[11px] font-mono text-[#f2f3f5] flex items-center gap-1 border border-[#2a2d32]">
+              <Clock className="w-3 h-3 text-[#9a9da5]" />
               {formatDuration(metadata.duration)}
             </div>
           )}
@@ -196,33 +193,33 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
             <PlatformBadge platform={metadata.platform} />
             <button
               onClick={() => setShowInspector(!showInspector)}
-              className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1 px-2 py-1 rounded bg-slate-900 border border-white/10 transition-colors"
+              className="text-[11px] text-[#9a9da5] hover:text-[#f2f3f5] flex items-center gap-1 px-2 py-1 rounded bg-[#121316] border border-[#2a2d32] transition-colors"
             >
-              <Info className="w-3 h-3 text-slate-400" />
+              <Info className="w-3 h-3 text-[#6f737d]" />
               <span>{showInspector ? 'Hide Inspector' : 'Inspector'}</span>
             </button>
           </div>
 
-          <h3 className="text-base font-semibold text-white leading-snug line-clamp-2">
+          <h3 className="text-base font-semibold text-[#f2f3f5] leading-snug line-clamp-2">
             {metadata.title}
           </h3>
 
-          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-[#9a9da5]">
             {(metadata.uploader || metadata.channel) && (
               <span className="flex items-center gap-1">
-                <User className="w-3.5 h-3.5 text-slate-500" />
+                <User className="w-3.5 h-3.5 text-[#6f737d]" />
                 {metadata.uploader || metadata.channel}
               </span>
             )}
             {metadata.viewCount && (
               <span className="flex items-center gap-1">
-                <Eye className="w-3.5 h-3.5 text-slate-500" />
+                <Eye className="w-3.5 h-3.5 text-[#6f737d]" />
                 {metadata.viewCount.toLocaleString()} views
               </span>
             )}
             {metadata.uploadDate && (
               <span className="flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                <Calendar className="w-3.5 h-3.5 text-[#6f737d]" />
                 {metadata.uploadDate}
               </span>
             )}
@@ -235,26 +232,26 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
 
       {/* Media Inspector Drawer */}
       {showInspector && (
-        <div className="bg-[#12151c] rounded-lg p-3.5 border border-white/5 text-xs space-y-2 font-mono text-slate-400">
-          <p className="font-semibold text-slate-200 flex items-center gap-1 text-[11px]">
+        <div className="bg-[#121316] rounded-lg p-3.5 border border-[#2a2d32] text-xs space-y-2 font-mono text-[#9a9da5]">
+          <p className="font-semibold text-[#f2f3f5] flex items-center gap-1 text-[11px]">
             <Cpu className="w-3.5 h-3.5 text-indigo-400" /> Technical Stream Details
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-[11px] pt-1">
-            <div>Format ID: <span className="text-white">{activeFormat?.formatId || 'N/A'}</span></div>
-            <div>Codec: <span className="text-white">{activeFormat?.vcodec || activeFormat?.acodec || 'N/A'}</span></div>
-            <div>Bitrate: <span className="text-white">{activeFormat?.tbr ? `${activeFormat.tbr} kbps` : 'N/A'}</span></div>
-            <div>HDR: <span className="text-white">{activeFormat?.hdr ? 'Yes' : 'No'}</span></div>
+            <div>Format ID: <span className="text-[#f2f3f5]">{activeFormat?.formatId || 'N/A'}</span></div>
+            <div>Codec: <span className="text-[#f2f3f5]">{activeFormat?.vcodec || activeFormat?.acodec || 'N/A'}</span></div>
+            <div>Bitrate: <span className="text-[#f2f3f5]">{activeFormat?.tbr ? `${activeFormat.tbr} kbps` : 'N/A'}</span></div>
+            <div>HDR: <span className="text-[#f2f3f5]">{activeFormat?.hdr ? 'Yes' : 'No'}</span></div>
           </div>
         </div>
       )}
 
       {/* Format Selector Category Tabs */}
-      <div className="space-y-3 pt-3 border-t border-white/5">
+      <div className="space-y-3 pt-3 border-t border-[#2a2d32]">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+          <span className="text-xs font-semibold text-[#9a9da5] uppercase tracking-wider">
             Select Stream Format
           </span>
-          <div className="flex bg-[#12151c] p-0.5 rounded border border-white/5">
+          <div className="flex bg-[#121316] p-0.5 rounded border border-[#2a2d32]">
             {(['video', 'combined', 'audio'] as QualityCategory[]).map((tab) => (
               <button
                 key={tab}
@@ -264,8 +261,8 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
                 }}
                 className={`px-2.5 py-1 rounded text-xs font-medium capitalize transition-colors ${
                   activeTab === tab
-                    ? 'bg-slate-800 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
+                    ? 'bg-[#22252a] text-[#f2f3f5] shadow-sm'
+                    : 'text-[#9a9da5] hover:text-[#f2f3f5]'
                 }`}
               >
                 {tab}
@@ -279,8 +276,8 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
           <div className="space-y-3">
             {originalAudioStreams.length > 0 && (
               <div className="space-y-1.5">
-                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <Music className="w-3.5 h-3.5 text-slate-400" /> Native Source Audio
+                <p className="text-[11px] font-semibold text-[#9a9da5] uppercase tracking-wider flex items-center gap-1.5">
+                  <Music className="w-3.5 h-3.5 text-[#6f737d]" /> Native Source Audio
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {originalAudioStreams.map(renderFormatButton)}
@@ -289,7 +286,7 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
             )}
 
             {convertedAudioFormats.length > 0 && (
-              <div className="space-y-1.5 pt-1 border-t border-white/5">
+              <div className="space-y-1.5 pt-1 border-t border-[#2a2d32]">
                 <p className="text-[11px] font-semibold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
                   <RefreshCw className="w-3.5 h-3.5 text-purple-400" /> Converted Audio Formats (FFmpeg)
                 </p>
@@ -302,7 +299,7 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
             {currentFormats.length === 0 ? (
-              <p className="text-xs text-slate-500 col-span-2 py-4 text-center">
+              <p className="text-xs text-[#6f737d] col-span-2 py-4 text-center">
                 No specific {activeTab} streams found. Try Combined formats.
               </p>
             ) : (

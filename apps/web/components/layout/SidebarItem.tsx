@@ -30,12 +30,12 @@ export function SidebarItem({ href, label, icon: Icon, badge, shortcut, onClick 
         onClick={onClick}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
-        className={`group relative flex items-center w-full h-[38px] rounded-md px-2.5 text-xs font-medium transition-colors ${
-          collapsed ? 'justify-center' : 'justify-between'
+        className={`group relative flex items-center w-full h-[36px] rounded-md text-xs font-medium transition-colors ${
+          collapsed ? 'justify-center px-0' : 'justify-between px-2.5'
         } ${
           isActive
-            ? 'bg-[#13161c] text-white border border-white/10'
-            : 'text-slate-400 hover:text-slate-200 hover:bg-[#0d0f14]'
+            ? 'bg-[#1c1e22] text-[#f2f3f5] border border-[#2a2d32]'
+            : 'text-[#9a9da5] hover:text-[#f2f3f5] hover:bg-[#18191c]'
         }`}
       >
         {/* Active Indicator Bar */}
@@ -47,10 +47,10 @@ export function SidebarItem({ href, label, icon: Icon, badge, shortcut, onClick 
           />
         )}
 
-        <div className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`}>
+        <div className={`flex items-center gap-2.5 ${collapsed ? 'justify-center' : ''}`}>
           <Icon
             className={`w-4 h-4 shrink-0 transition-colors ${
-              isActive ? 'text-indigo-400' : 'text-slate-400 group-hover:text-slate-200'
+              isActive ? 'text-indigo-400' : 'text-[#9a9da5] group-hover:text-[#f2f3f5]'
             }`}
           />
           {!collapsed && (
@@ -63,12 +63,12 @@ export function SidebarItem({ href, label, icon: Icon, badge, shortcut, onClick 
         {!collapsed && (
           <div className="flex items-center gap-1.5 shrink-0">
             {badge !== undefined && (
-              <span className="px-1.5 py-0.2 text-[10px] font-medium rounded bg-slate-800 text-slate-300 font-mono border border-white/5">
+              <span className="px-1.5 py-0.2 text-[10px] font-medium rounded bg-[#1c1e22] text-[#9a9da5] font-mono border border-[#2a2d32]">
                 {badge}
               </span>
             )}
             {shortcut && (
-              <span className="hidden group-hover:inline-block px-1.5 py-0.2 text-[10px] font-mono text-slate-500 bg-slate-900 rounded border border-white/5">
+              <span className="hidden group-hover:inline-block px-1.5 py-0.2 text-[10px] font-mono text-[#6f737d] bg-[#121316] rounded border border-[#2a2d32]">
                 {shortcut}
               </span>
             )}
@@ -84,11 +84,11 @@ export function SidebarItem({ href, label, icon: Icon, badge, shortcut, onClick 
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 6 }}
             transition={{ duration: 0.1 }}
-            className="absolute left-full ml-2 px-2.5 py-1 bg-[#0d0f14] border border-white/10 text-xs text-white rounded shadow-lg font-medium whitespace-nowrap z-50 pointer-events-none flex items-center gap-2"
+            className="absolute left-full ml-2 px-2.5 py-1 bg-[#1c1e22] border border-[#2a2d32] text-xs text-[#f2f3f5] rounded shadow-lg font-medium whitespace-nowrap z-50 pointer-events-none flex items-center gap-2"
           >
             <span>{label}</span>
             {badge !== undefined && (
-              <span className="px-1.5 py-0.2 text-[9px] font-bold rounded bg-slate-800 text-slate-300 font-mono">
+              <span className="px-1.5 py-0.2 text-[9px] font-bold rounded bg-[#121316] text-[#9a9da5] font-mono">
                 {badge}
               </span>
             )}
